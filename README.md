@@ -35,8 +35,7 @@ A bare `<slug>` uses your context's org; `<org>/<slug>` or `--org` targets anoth
 
     git -c http.extraHeader="Authorization: Bearer $(cw auth token)" push
 
-Command groups for commonplace (`kb`) and herald admin (`org`) build on this
-core and ship separately.
+The herald admin command group (`org`) builds on this core and ships separately.
 
 ## Issues (ledger)
 
@@ -49,3 +48,13 @@ core and ship separately.
 
 Issues are scoped to your org by the token (no --org). Needs an identity with
 `issue:read`/`issue:write`/`issue:claim`.
+
+## Knowledge (commonplace)
+
+    cw kb store --topic onboarding [--visibility org|private] [--tag x] < doc.md
+    echo "..." | cw kb store --topic notes
+    cw kb search "how does auth work" [--top-k 5]   # semantic (returns full entries)
+    cw kb list
+
+Knowledge is scoped to your org by the token (no --org). Needs an identity with
+`knowledge:read`/`knowledge:write`. `store` reads content from `--content` or stdin.
