@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	agent "github.com/CarriedWorldUniverse/cw/internal/cli/agent"
 	"github.com/CarriedWorldUniverse/cw/internal/cli/auth"
 	human "github.com/CarriedWorldUniverse/cw/internal/cli/human"
 	issue "github.com/CarriedWorldUniverse/cw/internal/cli/issue"
@@ -47,6 +48,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(kb.NewCmd(flags))
 	root.AddCommand(org.NewCmd(flags))
 	root.AddCommand(human.NewCmd(flags))
+	root.AddCommand(agent.NewCmd(flags))
 	return root
 }
 
