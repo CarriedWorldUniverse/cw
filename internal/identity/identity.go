@@ -45,6 +45,21 @@ func PromptHuman(in *os.File) (username, password string, err error) {
 	return username, string(pw), nil
 }
 
+// PromptPassword reads a single password from the terminal without echoing it.
+// Interactive only — the read requires a TTY.
+func PromptPassword(in *os.File, label string) (string, error) {
+	fmt.Fprintf(os.Stderr, "%s: ", label)
+	pw, err := term.ReadPassword(int(in.Fd()))
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		if !term.IsTerminal(int(in.Fd())) {
+			return "", fmt.Errorf("identity: password prompt needs a terminal: %w", err)
+		}
+		return "", fmt.Errorf("identity: read password: %w", err)
+	}
+	return string(pw), nil
+}
+
 // AgentAssertion derives the agent's casket key from (seed, slug) and signs an
 // RFC 7523 jwt-bearer assertion (iss=sub=agentID, aud=tokenURL, 2-minute exp).
 // now defaults to time.Now; injectable for tests via AgentAssertionAt.

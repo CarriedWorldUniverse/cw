@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cli/auth"
+	human "github.com/CarriedWorldUniverse/cw/internal/cli/human"
 	issue "github.com/CarriedWorldUniverse/cw/internal/cli/issue"
 	kb "github.com/CarriedWorldUniverse/cw/internal/cli/kb"
 	org "github.com/CarriedWorldUniverse/cw/internal/cli/org"
@@ -45,6 +46,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(issue.NewCmd(flags))
 	root.AddCommand(kb.NewCmd(flags))
 	root.AddCommand(org.NewCmd(flags))
+	root.AddCommand(human.NewCmd(flags))
 	return root
 }
 
