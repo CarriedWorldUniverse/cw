@@ -21,6 +21,7 @@ type Identity struct {
 	Subject string `yaml:"subject,omitempty"` // herald user id
 	Display string `yaml:"display,omitempty"` // email / display name
 	Slug    string `yaml:"slug,omitempty"`    // agent only
+	Org     string `yaml:"org,omitempty"`     // herald org id (from the token's org claim)
 }
 
 // Context binds an edge URL to an identity.
