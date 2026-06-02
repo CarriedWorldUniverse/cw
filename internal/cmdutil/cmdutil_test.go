@@ -14,6 +14,7 @@ func TestResolveRepo(t *testing.T) {
 		{"org-2/widgets", "org-3", "org-1", "org-3", "widgets", false}, // --org overrides ref org
 		{"widgets", "", "", "", "", true},                              // no org anywhere -> error
 		{"", "", "org-1", "", "", true},                                // empty ref -> error
+		{"org-2/", "", "org-1", "", "", true},                          // explicit org, empty slug -> error
 	}
 	for _, c := range cases {
 		org, slug, err := ResolveRepo(c.ref, c.flagOrg, c.defOrg)
@@ -30,7 +31,11 @@ func TestResolveRepo(t *testing.T) {
 }
 
 func TestCairnGitURL(t *testing.T) {
-	if got := CairnGitURL("http://edge:8080/", "org-1", "widgets"); got != "http://edge:8080/cairn/org-1/widgets.git" {
-		t.Fatalf("CairnGitURL = %q", got)
+	want := "http://edge:8080/cairn/org-1/widgets.git"
+	// Both trailing-slash and no-trailing-slash edges yield the same URL.
+	for _, edge := range []string{"http://edge:8080/", "http://edge:8080"} {
+		if got := CairnGitURL(edge, "org-1", "widgets"); got != want {
+			t.Fatalf("CairnGitURL(%q) = %q, want %q", edge, got, want)
+		}
 	}
 }
