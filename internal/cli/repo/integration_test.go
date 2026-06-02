@@ -24,6 +24,11 @@ import (
 // Gated on CW_IT_EDGE + CW_IT_USER + CW_IT_PASSWORD; skips cleanly otherwise so
 // the offline suite stays green.
 //
+// NOTE: CW_IT_USER must be a working-org identity holding repo:read + repo:write
+// (e.g. a human created with those scopes). The platform-admin genesis owner
+// (cwadmin) does NOT work here — it is firewalled from working-org product data
+// and has no repo:* scopes, so cairn returns "missing scope repo:write".
+//
 //	CW_IT_EDGE=http://dmonextreme.tail41686e.ts.net:8080 \
 //	CW_IT_USER=cwadmin@carriedworld.com CW_IT_PASSWORD=... \
 //	go test ./internal/cli/repo/ -run TestLiveRepoPR -v
