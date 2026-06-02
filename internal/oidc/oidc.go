@@ -38,13 +38,16 @@ type Discovery struct {
 // Discover fetches the OIDC discovery document from the edge.
 func (c *Client) Discover(ctx context.Context) (Discovery, error) {
 	u := c.heraldBase() + "/.well-known/openid-configuration"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return Discovery{}, fmt.Errorf("oidc: build request: %w", err)
+	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return Discovery{}, fmt.Errorf("oidc: cannot reach herald at %s: %w", c.edge, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
 		return Discovery{}, fmt.Errorf("oidc: discovery status %d: %s", resp.StatusCode, body)
 	}
@@ -112,14 +115,17 @@ func (c *Client) RefreshGrant(ctx context.Context, refreshToken string) (Token, 
 func (c *Client) TokenEndpoint(ctx context.Context) (string, error) { return c.tokenURL(ctx) }
 
 func (c *Client) grant(ctx context.Context, tokenURL string, form url.Values, what string) (Token, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return Token{}, fmt.Errorf("oidc: %s: build request: %w", what, err)
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return Token{}, fmt.Errorf("oidc: %s: %w", what, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
 		return Token{}, fmt.Errorf("oidc: %s rejected (status %d)", what, resp.StatusCode)
 	}
@@ -144,7 +150,10 @@ func (c *Client) Revoke(ctx context.Context, refreshToken string) error {
 		ru = c.heraldBase() + "/revoke"
 	}
 	form := url.Values{"token": {refreshToken}}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, ru, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ru, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("oidc: revoke: build request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.hc.Do(req)
 	if err != nil {

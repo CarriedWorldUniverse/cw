@@ -28,6 +28,11 @@ func stubHerald(t *testing.T) *httptest.Server {
 				w.WriteHeader(401)
 				return
 			}
+		case "urn:ietf:params:oauth:grant-type:jwt-bearer":
+			if r.Form.Get("assertion") == "" {
+				w.WriteHeader(400)
+				return
+			}
 		}
 		_, _ = w.Write([]byte(`{"access_token":"a-new","token_type":"Bearer","expires_in":600,"refresh_token":"r-new"}`))
 	})
@@ -62,6 +67,15 @@ func TestDiscoverAndGrants(t *testing.T) {
 	if _, err := c.RefreshGrant(ctx, "r-stale"); err == nil {
 		t.Fatal("stale refresh should error")
 	}
+
+	tok, err = c.JWTBearerGrant(ctx, "signed.assertion.jws")
+	if err != nil || tok.AccessToken != "a-new" {
+		t.Fatalf("JWTBearerGrant: %v %+v", err, tok)
+	}
+	if _, err := c.JWTBearerGrant(ctx, ""); err == nil {
+		t.Fatal("empty assertion should error")
+	}
+
 	if err := c.Revoke(ctx, "r-new"); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
