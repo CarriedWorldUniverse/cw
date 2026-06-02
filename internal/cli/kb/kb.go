@@ -20,10 +20,16 @@ func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 }
 
 // readContent sources the store content: --content if non-empty, else all of r
-// (stdin). Errors if both are empty.
+// (stdin). Errors if both are empty. If r is an interactive terminal (no piped
+// stdin), it returns immediately rather than blocking on a read for EOF.
 func readContent(flagContent string, r io.Reader) (string, error) {
 	if flagContent != "" {
 		return flagContent, nil
+	}
+	if f, ok := r.(*os.File); ok {
+		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+			return "", fmt.Errorf("provide content via --content or pipe it on stdin")
+		}
 	}
 	b, err := io.ReadAll(r)
 	if err != nil {
@@ -126,11 +132,13 @@ func newListCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-// snippet collapses content to a single short line for table output.
+// snippet collapses content to a single short line for table output, truncating
+// on rune boundaries so multi-byte characters are never sliced in half.
 func snippet(s string) string {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\n", " "), "\r", " ")
-	if len(s) > 60 {
-		s = s[:57] + "…"
+	r := []rune(s)
+	if len(r) > 60 {
+		return string(r[:57]) + "…"
 	}
 	return s
 }
