@@ -23,7 +23,7 @@ func NewCmd(gf *GlobalFlags) *cobra.Command {
 	cmd.AddCommand(
 		newLoginCmd(gf),
 		newLogoutCmd(gf),
-		newWhoamiCmd(gf),
+		NewWhoamiCmd(gf),
 		newStatusCmd(gf),
 		newSwitchCmd(gf),
 		newTokenCmd(gf),

@@ -14,7 +14,7 @@ func TestWhoamiClaims(t *testing.T) {
 	t.Setenv("CW_CONFIG_DIR", t.TempDir())
 	// Seed a context + a non-expired cached access token with known claims.
 	cfg := &config.Config{CurrentContext: "dev", Contexts: map[string]config.Context{
-		"dev": {Edge: "http://edge:8080", Identity: config.Identity{Kind: "human", Subject: "u1"}},
+		"dev": {Edge: "http://edge:8080", Identity: config.Identity{Kind: "human", Subject: "u1", Display: "alice@x"}},
 	}}
 	_ = cfg.Save()
 	at := "x." + b64(`{"sub":"u1","kind":"human","org":"acme","scope":"issue:read issue:write","products":["cairn","ledger"],"exp":9999999999}`) + ".y"
@@ -35,5 +35,52 @@ func TestWhoamiClaims(t *testing.T) {
 	}
 	if info.ExpiresIn <= 0 {
 		t.Fatalf("expires-in should be positive: %d", info.ExpiresIn)
+	}
+	if info.Edge != "http://edge:8080" {
+		t.Fatalf("edge: %q", info.Edge)
+	}
+	if info.Display != "alice@x" {
+		t.Fatalf("display: %q", info.Display)
+	}
+	if info.Slug != "" {
+		t.Fatalf("human should have no slug, got %q", info.Slug)
+	}
+}
+
+func TestWhoamiAgentSlug(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	cfg := &config.Config{CurrentContext: "ag", Contexts: map[string]config.Context{
+		"ag": {Edge: "http://edge:8080", Identity: config.Identity{Kind: "agent", Subject: "a1", Display: "builder", Slug: "builder"}},
+	}}
+	_ = cfg.Save()
+	at := "x." + b64(`{"sub":"a1","kind":"agent","org":"acme","scope":"repo:read","products":["cairn"],"exp":9999999999}`) + ".y"
+	_ = tokenstore.New("http://edge:8080", "ag", "a1").SaveAccess(at, time.Now().Add(time.Hour))
+
+	info, err := whoamiInfo(&GlobalFlags{})
+	if err != nil {
+		t.Fatalf("whoamiInfo: %v", err)
+	}
+	if info.Kind != "agent" || info.Slug != "builder" || info.Display != "builder" {
+		t.Fatalf("agent info: %+v", info)
+	}
+}
+
+func TestWhoamiTopLevelFactory(t *testing.T) {
+	// The exported factory builds a `whoami` command (used both at root and
+	// under `cw auth`).
+	cmd := NewWhoamiCmd(&GlobalFlags{})
+	if cmd.Use != "whoami" {
+		t.Fatalf("top-level factory Use = %q, want whoami", cmd.Use)
+	}
+	// And `cw auth` still has a whoami subcommand (the alias).
+	var found bool
+	for _, sub := range NewCmd(&GlobalFlags{}).Commands() {
+		if sub.Name() == "whoami" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("cw auth is missing its whoami subcommand")
 	}
 }

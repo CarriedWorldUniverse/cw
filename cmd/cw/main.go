@@ -49,6 +49,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(org.NewCmd(flags))
 	root.AddCommand(human.NewCmd(flags))
 	root.AddCommand(agent.NewCmd(flags))
+	root.AddCommand(auth.NewWhoamiCmd(flags))
 	return root
 }
 
