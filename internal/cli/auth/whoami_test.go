@@ -65,3 +65,22 @@ func TestWhoamiAgentSlug(t *testing.T) {
 		t.Fatalf("agent info: %+v", info)
 	}
 }
+
+func TestWhoamiTopLevelFactory(t *testing.T) {
+	// The exported factory builds a `whoami` command (used both at root and
+	// under `cw auth`).
+	cmd := NewWhoamiCmd(&GlobalFlags{})
+	if cmd.Use != "whoami" {
+		t.Fatalf("top-level factory Use = %q, want whoami", cmd.Use)
+	}
+	// And `cw auth` still has a whoami subcommand (the alias).
+	var found bool
+	for _, sub := range NewCmd(&GlobalFlags{}).Commands() {
+		if sub.Name() == "whoami" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("cw auth is missing its whoami subcommand")
+	}
+}

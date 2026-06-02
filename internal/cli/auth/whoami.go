@@ -65,7 +65,9 @@ func whoamiInfo(gf *GlobalFlags) (Info, error) {
 	return info, nil
 }
 
-func newWhoamiCmd(gf *GlobalFlags) *cobra.Command {
+// NewWhoamiCmd builds the whoami command, registered both at the top level
+// (`cw whoami`) and under `cw auth` (the alias).
+func NewWhoamiCmd(gf *GlobalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the current identity (subject, org, scopes, products)",

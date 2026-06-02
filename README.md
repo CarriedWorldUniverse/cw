@@ -17,6 +17,16 @@ A *context* is `{edge, identity}`. The refresh token is stored in the OS
 keychain; the access token is cached (0600) and silently refreshed. Use
 `--token`/`CW_TOKEN` to present a bearer directly (no stored state).
 
+## Identity
+
+    cw whoami            # current identity: context, edge, kind, subject, display, slug, org, scopes, products, expiry
+    cw whoami --json
+    cw auth status       # all contexts + token freshness
+
+`cw whoami` (alias: `cw auth whoami`) merges the token claims (ids, scopes,
+products, expiry) with the config context (display name, agent slug, edge) — all
+local, no network call.
+
 ## Repos & PRs (cairn)
 
     cw repo create widgets                 # in your org
