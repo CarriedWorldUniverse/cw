@@ -102,6 +102,9 @@ func newCloneCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 				return err
 			}
 			url := cmdutil.CairnGitURL(ctx.Edge, org, slug)
+			// NOTE: the bearer is visible in the process table (ps/proc) for the
+			// duration of the clone — an accepted v1 trade-off (tokens are
+			// short-lived; a git credential-helper is deferred, see the README).
 			gitArgs := []string{"-c", "http.extraHeader=Authorization: Bearer " + tok, "clone", url}
 			if len(args) == 2 {
 				gitArgs = append(gitArgs, args[1])
@@ -122,7 +125,7 @@ func runGit(ctx context.Context, args ...string) error {
 	c := exec.CommandContext(ctx, g, args...)
 	c.Stdout, c.Stderr, c.Stdin = os.Stdout, os.Stderr, os.Stdin
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("git %v: %w", args[len(args)-2:], err)
+		return fmt.Errorf("git %v: %w", args, err)
 	}
 	return nil
 }
