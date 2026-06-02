@@ -48,10 +48,16 @@ func stub(t *testing.T) *client.Client {
 	mux.HandleFunc("GET /herald/api/orgs/o1/products", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"cairn":true,"ledger":false,"commonplace":true}`)) // bare map
 	})
-	mux.HandleFunc("POST /herald/api/orgs/o1/products/ledger/enable", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /herald/api/orgs/o1/products/ledger/enable", func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > 0 {
+			t.Errorf("enable must send no body, got %d bytes", r.ContentLength)
+		}
 		_, _ = w.Write([]byte(`{"cairn":true,"ledger":true,"commonplace":true}`))
 	})
-	mux.HandleFunc("POST /herald/api/orgs/o1/products/ledger/disable", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /herald/api/orgs/o1/products/ledger/disable", func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > 0 {
+			t.Errorf("disable must send no body, got %d bytes", r.ContentLength)
+		}
 		_, _ = w.Write([]byte(`{"cairn":true,"ledger":false,"commonplace":true}`))
 	})
 	mux.HandleFunc("POST /herald/api/orgs/o1/humans", func(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +126,16 @@ func errStub(t *testing.T) *client.Client {
 	mux.HandleFunc("GET /herald/api/orgs", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
+	// DeleteOrg (body on DELETE) → {"message":...} branch of errMsg.
+	mux.HandleFunc("DELETE /herald/api/orgs/o1", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"org not found"}`))
+	})
+	// SetHumanPassword (nil out) → server message surfaces on a 2xx-only call.
+	mux.HandleFunc("POST /herald/api/humans/h1/password", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"password too short"}`))
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return client.WithStaticToken(srv.URL, "tok")
@@ -134,5 +150,15 @@ func TestErrorMapping(t *testing.T) {
 	}
 	if _, err := ListOrgs(ctx, c); err == nil || !strings.Contains(err.Error(), "status 500") {
 		t.Fatalf("ListOrgs error: want status fallback, got %v", err)
+	}
+	// {"message":...} branch (DeleteOrg sends a body on DELETE).
+	if _, err := DeleteOrg(ctx, c, "o1", "acme"); err == nil ||
+		!strings.Contains(err.Error(), "org not found") {
+		t.Fatalf("DeleteOrg error: want message branch, got %v", err)
+	}
+	// nil-out call still surfaces the server error.
+	if err := SetHumanPassword(ctx, c, "h1", "short"); err == nil ||
+		!strings.Contains(err.Error(), "password too short") {
+		t.Fatalf("SetHumanPassword error: want server message, got %v", err)
 	}
 }
