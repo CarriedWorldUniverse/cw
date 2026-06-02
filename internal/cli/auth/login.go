@@ -145,9 +145,10 @@ func runLogin(ctx context.Context, o loginOpts) error {
 	if err != nil {
 		return err
 	}
+	org, _ := claims["org"].(string)
 	cfg.Upsert(o.contextName, config.Context{
 		Edge:     o.edge,
-		Identity: config.Identity{Kind: kind, Subject: subject, Display: display, Slug: o.slug},
+		Identity: config.Identity{Kind: kind, Subject: subject, Display: display, Slug: o.slug, Org: org},
 	})
 	cfg.CurrentContext = o.contextName
 	if err := cfg.Save(); err != nil {

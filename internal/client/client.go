@@ -130,6 +130,9 @@ func (c *Client) do(ctx context.Context, method, url, bearer string, body []byte
 		r = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, url, r)
+	if err == nil && body != nil {
+		req.Header.Set("Content-Type", "application/json") // cw product bodies are JSON
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("client: new request: %w", err)
 	}

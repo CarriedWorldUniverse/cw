@@ -7,16 +7,14 @@
 // stdout stays clean; `--json` always goes to stdout.
 package auth
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
+	"github.com/spf13/cobra"
+)
 
-// GlobalFlags carries the root persistent flags the auth commands read.
-type GlobalFlags struct {
-	Context  string
-	Edge     string
-	Token    string
-	Identity string
-	JSON     bool
-}
+// GlobalFlags is the shared cmdutil.GlobalFlags (aliased so the auth commands
+// and main keep referring to auth.GlobalFlags).
+type GlobalFlags = cmdutil.GlobalFlags
 
 // NewCmd builds the `cw auth` command tree. gf points at the root's flag vars,
 // which cobra populates at Execute time; subcommands read gf inside RunE.
