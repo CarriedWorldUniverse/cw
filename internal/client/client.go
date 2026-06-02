@@ -6,6 +6,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -88,8 +89,10 @@ func (c *Client) URL(pillar, path string) string {
 }
 
 // Do executes an authenticated request, injecting the bearer and retrying once
-// after a silent refresh on a 401.
-func (c *Client) Do(ctx context.Context, method, pillar, path string, body io.Reader) (*http.Response, []byte, error) {
+// after a silent refresh on a 401. body is the full request body (may be nil);
+// it is taken as []byte rather than an io.Reader so the 401-retry can safely
+// resend it (a streamed reader would already be drained on the second attempt).
+func (c *Client) Do(ctx context.Context, method, pillar, path string, body []byte) (*http.Response, []byte, error) {
 	tok, err := c.bearer(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -112,8 +115,12 @@ func (c *Client) Get(ctx context.Context, pillar, path string) (*http.Response, 
 	return c.Do(ctx, http.MethodGet, pillar, path, nil)
 }
 
-func (c *Client) do(ctx context.Context, method, url, bearer string, body io.Reader) (*http.Response, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+func (c *Client) do(ctx context.Context, method, url, bearer string, body []byte) (*http.Response, []byte, error) {
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, r)
 	if err != nil {
 		return nil, nil, fmt.Errorf("client: new request: %w", err)
 	}
@@ -123,6 +130,9 @@ func (c *Client) do(ctx context.Context, method, url, bearer string, body io.Rea
 		return nil, nil, fmt.Errorf("client: %s %s: %w", method, url, err)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, nil, fmt.Errorf("client: %s %s: read body: %w", method, url, err)
+	}
 	return resp, raw, nil
 }

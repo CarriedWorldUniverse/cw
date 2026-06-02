@@ -60,3 +60,22 @@ func TestSilentRefreshThenCall(t *testing.T) {
 		t.Fatalf("access not refreshed/cached: %q", at)
 	}
 }
+
+// TestDo401RefreshRetry covers the reactive path: a cached token that LOOKS
+// valid (not yet expired) but the server rejects with 401 → one silent refresh
+// + retry succeeds.
+func TestDo401RefreshRetry(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	srv := stub(t)
+	ts := tokenstore.New(srv.URL, "dev", "u1")
+	_ = ts.SaveRefresh("r-old")
+	// Not-yet-expired but server-rejected (e.g. revoked) access token.
+	_ = ts.SaveAccess("a-stale", time.Now().Add(10*time.Minute))
+
+	c := New(srv.URL, ts, oidc.New(srv.URL))
+	resp, body, err := c.Get(context.Background(), "ledger", "/ping")
+	if err != nil || resp.StatusCode != 200 || string(body) != "pong" {
+		t.Fatalf("Get after 401-retry: %v status=%d body=%q", err, resp.StatusCode, body)
+	}
+}
