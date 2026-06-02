@@ -12,11 +12,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Info is the resolved identity for `whoami`.
+// Info is the resolved identity for `whoami`: token claims merged with the
+// config context (display/slug/edge are config-sourced, not in the token).
 type Info struct {
 	Context   string   `json:"context"`
-	Subject   string   `json:"subject"`
+	Edge      string   `json:"edge"`
 	Kind      string   `json:"kind"`
+	Subject   string   `json:"subject"`
+	Display   string   `json:"display,omitempty"`
+	Slug      string   `json:"slug,omitempty"`
 	Org       string   `json:"org"`
 	Scopes    []string `json:"scopes"`
 	Products  []string `json:"products"`
@@ -24,7 +28,7 @@ type Info struct {
 }
 
 func whoamiInfo(gf *GlobalFlags) (Info, error) {
-	c, _, name, err := session(gf)
+	c, sess, name, err := session(gf)
 	if err != nil {
 		return Info{}, err
 	}
@@ -36,7 +40,12 @@ func whoamiInfo(gf *GlobalFlags) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	info := Info{Context: name}
+	info := Info{
+		Context: name,
+		Edge:    sess.Edge,
+		Display: sess.Identity.Display,
+		Slug:    sess.Identity.Slug,
+	}
 	info.Subject, _ = claims["sub"].(string)
 	info.Kind, _ = claims["kind"].(string)
 	info.Org, _ = claims["org"].(string)
@@ -72,9 +81,16 @@ func newWhoamiCmd(gf *GlobalFlags) *cobra.Command {
 			if info.ExpiresIn <= 0 {
 				expires = "expired"
 			}
-			fmt.Printf("context:  %s\nsubject:  %s\nkind:     %s\norg:      %s\nscopes:   %s\nproducts: %s\nexpires:  %s\n",
-				info.Context, info.Subject, info.Kind, info.Org,
-				strings.Join(info.Scopes, " "), strings.Join(info.Products, " "), expires)
+			fmt.Printf("context:  %s\nedge:     %s\nkind:     %s\nsubject:  %s\n",
+				info.Context, info.Edge, info.Kind, info.Subject)
+			if info.Display != "" {
+				fmt.Printf("display:  %s\n", info.Display)
+			}
+			if info.Slug != "" {
+				fmt.Printf("slug:     %s\n", info.Slug)
+			}
+			fmt.Printf("org:      %s\nscopes:   %s\nproducts: %s\nexpires:  %s\n",
+				info.Org, strings.Join(info.Scopes, " "), strings.Join(info.Products, " "), expires)
 			return nil
 		},
 	}
