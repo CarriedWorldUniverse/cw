@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/CarriedWorldUniverse/cw/internal/client"
 )
@@ -114,7 +115,7 @@ func OpenPull(ctx context.Context, c *client.Client, org, slug string, in OpenPu
 func ListPulls(ctx context.Context, c *client.Client, org, slug, state string) ([]Pull, error) {
 	path := pullsPath(org, slug)
 	if state != "" {
-		path += "?state=" + state
+		path += "?state=" + url.QueryEscape(state)
 	}
 	var ps []Pull
 	err := do(ctx, c, http.MethodGet, path, nil, &ps)

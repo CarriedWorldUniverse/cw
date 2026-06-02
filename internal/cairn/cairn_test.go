@@ -22,7 +22,12 @@ func stub(t *testing.T) *client.Client {
 	mux.HandleFunc("POST /cairn/api/orgs/o1/repos/widgets/pulls", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"7","repo":"widgets","source":"feat","target":"main","title":"T","state":"open","ledger_issue_key":"NEX-9"}`))
 	})
-	mux.HandleFunc("GET /cairn/api/orgs/o1/repos/widgets/pulls", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /cairn/api/orgs/o1/repos/widgets/pulls", func(w http.ResponseWriter, r *http.Request) {
+		// state must reach the wire as a query param ("open" here; absent for the empty-state call).
+		if got := r.URL.Query().Get("state"); got != "open" && got != "" {
+			w.WriteHeader(400)
+			return
+		}
 		_, _ = w.Write([]byte(`[{"id":"7","repo":"widgets","source":"feat","target":"main","title":"T","state":"open","ledger_issue_key":"NEX-9"}]`))
 	})
 	mux.HandleFunc("GET /cairn/api/orgs/o1/repos/widgets/pulls/7", func(w http.ResponseWriter, _ *http.Request) {
@@ -58,7 +63,11 @@ func TestWrapper(t *testing.T) {
 	}
 	pulls, err := ListPulls(ctx, c, "o1", "widgets", "open")
 	if err != nil || len(pulls) != 1 || pulls[0].State != "open" {
-		t.Fatalf("ListPulls: %v %+v", err, pulls)
+		t.Fatalf("ListPulls(open): %v %+v", err, pulls)
+	}
+	// Empty state omits the query param entirely (stub allows absent state).
+	if _, err := ListPulls(ctx, c, "o1", "widgets", ""); err != nil {
+		t.Fatalf("ListPulls(\"\"): %v", err)
 	}
 	got, err := GetPull(ctx, c, "o1", "widgets", "7")
 	if err != nil || got.ID != "7" {
