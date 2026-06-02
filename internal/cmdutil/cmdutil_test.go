@@ -30,6 +30,16 @@ func TestResolveRepo(t *testing.T) {
 	}
 }
 
+func TestParseCairnGitURL(t *testing.T) {
+	org, slug, ok := ParseCairnGitURL("http://edge:8080/cairn/o1/widgets.git")
+	if !ok || org != "o1" || slug != "widgets" {
+		t.Fatalf("parse = %q,%q,%v", org, slug, ok)
+	}
+	if _, _, ok := ParseCairnGitURL("https://github.com/x/y.git"); ok {
+		t.Fatal("non-cairn URL should not parse")
+	}
+}
+
 func TestCairnGitURL(t *testing.T) {
 	want := "http://edge:8080/cairn/org-1/widgets.git"
 	// Both trailing-slash and no-trailing-slash edges yield the same URL.

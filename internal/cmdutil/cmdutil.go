@@ -4,6 +4,7 @@ package cmdutil
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/CarriedWorldUniverse/cw/internal/client"
@@ -71,4 +72,33 @@ func ResolveRepo(ref, flagOrg, defOrg string) (org, slug string, err error) {
 // CairnGitURL builds the Smart-HTTP git URL for a repo through the edge.
 func CairnGitURL(edge, org, slug string) string {
 	return strings.TrimRight(edge, "/") + "/cairn/" + org + "/" + slug + ".git"
+}
+
+// ParseCairnGitURL extracts (org, slug) from a cairn Smart-HTTP remote URL
+// (".../cairn/<org>/<slug>.git"), or ok=false.
+func ParseCairnGitURL(remote string) (org, slug string, ok bool) {
+	i := strings.Index(remote, "/cairn/")
+	if i < 0 || !strings.HasSuffix(remote, ".git") {
+		return "", "", false
+	}
+	rest := strings.TrimSuffix(remote[i+len("/cairn/"):], ".git")
+	j := strings.IndexByte(rest, '/')
+	if j <= 0 || j == len(rest)-1 {
+		return "", "", false
+	}
+	return rest[:j], rest[j+1:], true
+}
+
+// InferRepoFromCwd reads `git remote get-url origin` in the cwd and parses a
+// cairn (org, slug) from it. ok=false when not in a cairn clone.
+func InferRepoFromCwd() (org, slug string, ok bool) {
+	g, err := exec.LookPath("git")
+	if err != nil {
+		return "", "", false
+	}
+	out, err := exec.Command(g, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return "", "", false
+	}
+	return ParseCairnGitURL(strings.TrimSpace(string(out)))
 }

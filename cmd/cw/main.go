@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cli/auth"
+	pr "github.com/CarriedWorldUniverse/cw/internal/cli/pr"
 	repo "github.com/CarriedWorldUniverse/cw/internal/cli/repo"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +38,7 @@ func newRootCmd() *cobra.Command {
 	p.BoolVar(flagJSON, "json", false, "machine-readable JSON output")
 	root.AddCommand(auth.NewCmd(flags))
 	root.AddCommand(repo.NewCmd(flags))
+	root.AddCommand(pr.NewCmd(flags))
 	return root
 }
 
