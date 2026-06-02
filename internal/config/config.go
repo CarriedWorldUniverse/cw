@@ -69,7 +69,9 @@ func Load() (*Config, error) {
 	return &c, nil
 }
 
-// Save writes the config 0600, creating the directory if needed.
+// Save writes the config 0600, creating the directory if needed. The write is
+// atomic (temp file in the same dir + rename) so a crash or a racing writer
+// (e.g. parallel agent invocations) can never leave a truncated config.
 func (c *Config) Save() error {
 	if err := os.MkdirAll(Dir(), 0o700); err != nil {
 		return fmt.Errorf("config: mkdir: %w", err)
@@ -78,8 +80,25 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("config: marshal: %w", err)
 	}
-	if err := os.WriteFile(path(), b, 0o600); err != nil {
+	tmp, err := os.CreateTemp(Dir(), ".config-*.yaml.tmp")
+	if err != nil {
+		return fmt.Errorf("config: temp: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once renamed
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("config: chmod: %w", err)
+	}
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("config: write: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("config: close: %w", err)
+	}
+	if err := os.Rename(tmpName, path()); err != nil {
+		return fmt.Errorf("config: rename: %w", err)
 	}
 	return nil
 }
@@ -99,8 +118,12 @@ func (c *Config) Current() (Context, bool) {
 }
 
 // Resolve picks the effective context from flag overrides:
-//   - name set  -> that named context (error if unknown)
-//   - edge set  -> the current context with Edge replaced (or a bare context)
+//   - name set  -> that named context (error if unknown; edge override applied)
+//   - edge set  -> the current context with Edge replaced. If there is no
+//     current context this yields an edge-only context with an EMPTY identity —
+//     valid for the --token path (caller supplies a bearer) and for first-run
+//     `login` (which builds its own context); callers needing a stored identity
+//     must check ctx.Identity.
 //   - neither   -> the current context (error if none)
 func (c *Config) Resolve(name, edge string) (Context, string, error) {
 	if name != "" {

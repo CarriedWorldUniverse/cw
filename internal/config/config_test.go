@@ -47,6 +47,15 @@ func TestResolvePrecedence(t *testing.T) {
 	if err != nil || name != "prod" || ctx.Edge != "http://prod:8080" {
 		t.Fatalf("explicit name: %v %q %+v", err, name, ctx)
 	}
+	// Name + edge: the named context wins, edge is overridden on it.
+	ctx, name, err = c.Resolve("prod", "http://override:9000")
+	if err != nil || name != "prod" || ctx.Edge != "http://override:9000" {
+		t.Fatalf("name+edge: %v %q %+v", err, name, ctx)
+	}
+	// Unknown name -> error.
+	if _, _, err := c.Resolve("nope", ""); err == nil {
+		t.Fatal("unknown context should error")
+	}
 	// --edge override with no name -> ephemeral context off current.
 	ctx, _, err = c.Resolve("", "http://override:9000")
 	if err != nil || ctx.Edge != "http://override:9000" {
