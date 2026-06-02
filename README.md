@@ -35,5 +35,17 @@ A bare `<slug>` uses your context's org; `<org>/<slug>` or `--org` targets anoth
 
     git -c http.extraHeader="Authorization: Bearer $(cw auth token)" push
 
-Command groups for ledger (`issue`), commonplace (`kb`), and herald admin
-(`org`) build on this core and ship separately.
+Command groups for commonplace (`kb`) and herald admin (`org`) build on this
+core and ship separately.
+
+## Issues (ledger)
+
+    cw issue create --project NEX --type Story --title "Add X" [--body ...] [--dod ...] [--priority ...]
+    cw issue list   [--mine | --ready | --project NEX]      # --mine is the default
+    cw issue view   NEX-12
+    cw issue claim  NEX-12
+    cw issue transition NEX-12 "In Review"
+    cw issue comment NEX-12 "looks good"
+
+Issues are scoped to your org by the token (no --org). Needs an identity with
+`issue:read`/`issue:write`/`issue:claim`.
