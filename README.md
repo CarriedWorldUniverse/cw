@@ -58,3 +58,27 @@ Issues are scoped to your org by the token (no --org). Needs an identity with
 
 Knowledge is scoped to your org by the token (no --org). Needs an identity with
 `knowledge:read`/`knowledge:write`. `store` reads content from `--content` or stdin.
+
+## Orgs (herald admin)
+
+    cw org create acme [--product cairn --product ledger]
+    cw org list
+    cw org products <org-id>
+    cw org enable  <org-id> ledger
+    cw org disable <org-id> ledger
+    cw org delete  <org-id> --confirm acme      # --confirm must equal the org name
+
+## Humans (herald admin)
+
+    cw human create --org <org-id> --name alice \
+        --scope knowledge:read --scope knowledge:write --password-stdin <<< "$PW"
+    cw human set-password <human-id> --password-stdin <<< "$PW"   # else prompts no-echo
+
+Org and identity admin require a platform-admin (`herald:platform-admin`) or
+org-admin (`herald:org-admin`) bearer. Passwords are read from stdin
+(`--password-stdin`) or an interactive prompt — never a plaintext flag.
+Provisioning a working identity end to end:
+
+    ORG=$(cw org create acme)
+    H=$(cw human create --org "$ORG" --name alice --scope knowledge:read --password-stdin <<< "$PW")
+    cw auth login --edge <edge>      # log in as $H
