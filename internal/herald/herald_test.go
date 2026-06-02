@@ -162,3 +162,25 @@ func TestErrorMapping(t *testing.T) {
 		t.Fatalf("SetHumanPassword error: want server message, got %v", err)
 	}
 }
+
+func TestCreateAgent(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/orgs/o1/agents", func(w http.ResponseWriter, r *http.Request) {
+		body := decode(t, r)
+		if body["display_name"] != "builder" || body["responsible_human"] != "h1" ||
+			body["casket_pubkey"] != "cHVia2V5" || body["org"] != nil {
+			t.Errorf("create agent body = %v (want dn/responsible_human/casket_pubkey, no org)", body)
+		}
+		_, _ = w.Write([]byte(`{"id":"a1","kind":"agent","display_name":"builder","org":"o1","responsible_human":"h1","fingerprint":"fp1","status":"active","active":true,"scopes":["repo:read"]}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := client.WithStaticToken(srv.URL, "tok")
+
+	a, err := CreateAgent(context.Background(), c, "o1", CreateAgentInput{
+		DisplayName: "builder", ResponsibleHuman: "h1", CasketPubkey: "cHVia2V5", Scopes: []string{"repo:read"},
+	})
+	if err != nil || a.ID != "a1" || a.Kind != "agent" || a.Fingerprint != "fp1" || !a.Active || len(a.Scopes) != 1 {
+		t.Fatalf("CreateAgent: %v %+v", err, a)
+	}
+}
