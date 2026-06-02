@@ -40,6 +40,23 @@ func TestDecodeAccessClaims(t *testing.T) {
 	if err != nil || claims["sub"] != "u1" || claims["kind"] != "human" {
 		t.Fatalf("DecodeAccessClaims: %v %+v", err, claims)
 	}
+
+	// Non-3-part token -> error.
+	if _, err := DecodeAccessClaims("not.a"); err == nil {
+		t.Fatal("non-3-part token should error")
+	}
+	// Valid base64 payload that isn't JSON -> non-nil empty claims (safe to read).
+	bad := "x." + b64url(`not json`) + ".y"
+	c, err := DecodeAccessClaims(bad)
+	if err != nil {
+		t.Fatalf("bad-json payload: unexpected err %v", err)
+	}
+	if c == nil {
+		t.Fatal("claims must be non-nil even on bad JSON")
+	}
+	if _, ok := c["sub"].(string); ok {
+		t.Fatalf("bad-json claims should be empty, got %+v", c)
+	}
 }
 
 func b64url(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
