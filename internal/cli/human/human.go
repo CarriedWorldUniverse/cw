@@ -58,6 +58,10 @@ func newCreateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if org == "" || name == "" {
 				return fmt.Errorf("--org and --name are required")
 			}
+			// A password on create is opt-in via --password-stdin only; without it
+			// the human is created password-less (set one later with set-password).
+			// There is deliberately no interactive prompt here — create is often
+			// scripted. (readSecret's TTY-prompt branch is used by set-password.)
 			var pw string
 			if passwordStdin {
 				var err error
