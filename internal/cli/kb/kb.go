@@ -97,6 +97,10 @@ func newSearchCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if gf.JSON {
 				return json.NewEncoder(os.Stdout).Encode(hits)
 			}
+			if len(hits) == 0 {
+				fmt.Fprintln(os.Stderr, "no results")
+				return nil
+			}
 			for _, h := range hits {
 				fmt.Printf("%.3f  %-24s %s\n", h.Score, h.Entry.Topic, snippet(h.Entry.Content))
 			}
