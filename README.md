@@ -82,3 +82,17 @@ Provisioning a working identity end to end:
     ORG=$(cw org create acme)
     H=$(cw human create --org "$ORG" --name alice --scope knowledge:read --password-stdin <<< "$PW")
     cw auth login --edge <edge>      # at the prompt, enter $H and $PW
+
+## Agents (herald admin)
+
+    cw agent keygen                              # mint an owner seed -> set as CW_OWNER_SEED
+    cw agent create --org <org-id> --name builder --slug builder \
+        --responsible-human <human-id> --scope repo:read --scope repo:write
+
+An agent's ed25519 "casket" key is derived deterministically from `CW_OWNER_SEED`
++ `--slug` (so creation and `cw auth login --agent` produce the same key; agents
+under one owner differ by slug). Creating one needs an org-admin/platform-admin
+bearer to register it, and `CW_OWNER_SEED` to derive its key. After create, log
+in as the agent:
+
+    CW_OWNER_SEED=<seed> CW_AGENT_ID=<agent-id> CW_AGENT_SLUG=builder cw auth login --agent
