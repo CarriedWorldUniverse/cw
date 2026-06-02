@@ -27,14 +27,12 @@ func newStatusCmd(gf *GlobalFlags) *cobra.Command {
 				if name == cfg.CurrentContext {
 					marker = "* "
 				}
+				// valid (cached access still live) > refreshable (refresh token
+				// present) > logged-out.
 				state := "logged-out"
 				st := tokenstore.New(ctx.Edge, name, ctx.Identity.Subject)
-				if _, exp, err := st.Access(); err == nil {
-					if time.Until(exp) > 0 {
-						state = "valid"
-					} else if _, rerr := st.Refresh(); rerr == nil {
-						state = "refreshable"
-					}
+				if _, exp, err := st.Access(); err == nil && time.Until(exp) > 0 {
+					state = "valid"
 				} else if _, rerr := st.Refresh(); rerr == nil {
 					state = "refreshable"
 				}

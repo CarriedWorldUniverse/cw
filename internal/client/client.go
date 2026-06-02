@@ -53,9 +53,6 @@ func WithStaticToken(edge, token string) *Client {
 // bearer returns a currently-valid access token, silently refreshing if the
 // cached one is within skew of expiry. Returns ErrReauth when no path to a fresh
 // token exists.
-// AccessToken returns a currently-valid access token (silently refreshing).
-func (c *Client) AccessToken(ctx context.Context) (string, error) { return c.bearer(ctx) }
-
 func (c *Client) bearer(ctx context.Context) (string, error) {
 	if c.staticToken != "" {
 		return c.staticToken, nil
@@ -66,6 +63,10 @@ func (c *Client) bearer(ctx context.Context) (string, error) {
 	}
 	return c.refresh(ctx)
 }
+
+// AccessToken returns a currently-valid access token (silently refreshing). It
+// is the public form of bearer, used by `cw auth whoami`/`token`.
+func (c *Client) AccessToken(ctx context.Context) (string, error) { return c.bearer(ctx) }
 
 func (c *Client) refresh(ctx context.Context) (string, error) {
 	rtok, err := c.store.Refresh()

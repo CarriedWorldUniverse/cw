@@ -68,9 +68,13 @@ func newWhoamiCmd(gf *GlobalFlags) *cobra.Command {
 			if gf.JSON {
 				return json.NewEncoder(os.Stdout).Encode(info)
 			}
-			fmt.Printf("context:  %s\nsubject:  %s\nkind:     %s\norg:      %s\nscopes:   %s\nproducts: %s\nexpires:  %ds\n",
+			expires := fmt.Sprintf("%ds", info.ExpiresIn)
+			if info.ExpiresIn <= 0 {
+				expires = "expired"
+			}
+			fmt.Printf("context:  %s\nsubject:  %s\nkind:     %s\norg:      %s\nscopes:   %s\nproducts: %s\nexpires:  %s\n",
 				info.Context, info.Subject, info.Kind, info.Org,
-				strings.Join(info.Scopes, " "), strings.Join(info.Products, " "), info.ExpiresIn)
+				strings.Join(info.Scopes, " "), strings.Join(info.Products, " "), expires)
 			return nil
 		},
 	}
