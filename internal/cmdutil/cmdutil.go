@@ -77,7 +77,10 @@ func CairnGitURL(edge, org, slug string) string {
 // ParseCairnGitURL extracts (org, slug) from a cairn Smart-HTTP remote URL
 // (".../cairn/<org>/<slug>.git"), or ok=false.
 func ParseCairnGitURL(remote string) (org, slug string, ok bool) {
-	i := strings.Index(remote, "/cairn/")
+	// LastIndex: the edge never contains "/cairn/", and CairnGitURL always
+	// writes ".../cairn/<org>/<slug>.git", so the final "/cairn/" anchors the
+	// org/slug even if an earlier path segment happens to contain it.
+	i := strings.LastIndex(remote, "/cairn/")
 	if i < 0 || !strings.HasSuffix(remote, ".git") {
 		return "", "", false
 	}

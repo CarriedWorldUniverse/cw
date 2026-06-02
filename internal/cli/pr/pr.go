@@ -45,12 +45,13 @@ func newCreateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 		Use:   "create",
 		Short: "Open a pull request (creates a ledger issue)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Fail fast on missing required flags before building a session / inferring the repo.
+			if head == "" || base == "" || title == "" || project == "" {
+				return fmt.Errorf("--head, --base, --title, --project are required")
+			}
 			c, _, org, slug, err := resolve(gf, repoFlag, orgFlag)
 			if err != nil {
 				return err
-			}
-			if head == "" || base == "" || title == "" || project == "" {
-				return fmt.Errorf("--head, --base, --title, --project are required")
 			}
 			p, err := cairn.OpenPull(cmd.Context(), c, org, slug, cairn.OpenPullInput{
 				Source: head, Target: base, Title: title, Description: body, Project: project, DefinitionOfDone: dod,
