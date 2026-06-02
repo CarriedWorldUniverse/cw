@@ -17,5 +17,23 @@ A *context* is `{edge, identity}`. The refresh token is stored in the OS
 keychain; the access token is cached (0600) and silently refreshed. Use
 `--token`/`CW_TOKEN` to present a bearer directly (no stored state).
 
-Command groups for cairn (`repo`/`pr`), ledger (`issue`), commonplace (`kb`),
-and herald admin (`org`) build on this core and ship separately.
+## Repos & PRs (cairn)
+
+    cw repo create widgets                 # in your org
+    cw repo list
+    cw repo clone <org>/widgets [dir]      # shells git with a fresh bearer
+    cw pr create --repo <org>/widgets --head feat --base main \
+        --title "Add X" --project NEX [--body ...] [--dod ...]
+    cw pr list  --repo <org>/widgets [--state open|merged|all]
+    cw pr view  7 --repo <org>/widgets
+    cw pr merge 7 --repo <org>/widgets     # fast-forward only
+
+Inside a `cw repo clone`d directory the `--repo` flag is inferred from `origin`.
+A bare `<slug>` uses your context's org; `<org>/<slug>` or `--org` targets another.
+
+**Pushing** (no `cw push` yet): from a clone,
+
+    git -c http.extraHeader="Authorization: Bearer $(cw auth token)" push
+
+Command groups for ledger (`issue`), commonplace (`kb`), and herald admin
+(`org`) build on this core and ship separately.
