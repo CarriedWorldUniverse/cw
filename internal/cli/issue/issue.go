@@ -120,8 +120,8 @@ func newViewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if gf.JSON {
 				return json.NewEncoder(os.Stdout).Encode(iss)
 			}
-			fmt.Printf("key:      %s\ntype:     %s\nstatus:   %s\nsummary:  %s\nassignee: %s\nproject:  %s\ndod:      %s\n",
-				iss.Key, iss.Type, iss.Status, iss.Summary, iss.AssigneeAspect, iss.Project, iss.DefinitionOfDone)
+			fmt.Printf("key:      %s\ntype:     %s\nstatus:   %s\nsummary:  %s\nassignee: %s\nproject:  %s\n\n%s\n\ndod:      %s\n",
+				iss.Key, iss.Type, iss.Status, iss.Summary, iss.AssigneeAspect, iss.Project, iss.Description, iss.DefinitionOfDone)
 			return nil
 		},
 	}
