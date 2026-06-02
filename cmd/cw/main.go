@@ -5,16 +5,20 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/CarriedWorldUniverse/cw/internal/cli/auth"
 	"github.com/spf13/cobra"
 )
 
-// Global flags shared by all subcommands (precedence: flag > env > current context).
+// Global flags shared by all subcommands (precedence: flag > env > current
+// context). They are bound directly onto an auth.GlobalFlags so cobra populates
+// the same struct the auth subcommands read at Execute time.
 var (
-	flagContext  string
-	flagEdge     string
-	flagToken    string
-	flagIdentity string
-	flagJSON     bool
+	flags        = &auth.GlobalFlags{}
+	flagContext  = &flags.Context
+	flagEdge     = &flags.Edge
+	flagToken    = &flags.Token
+	flagIdentity = &flags.Identity
+	flagJSON     = &flags.JSON
 )
 
 func newRootCmd() *cobra.Command {
@@ -25,12 +29,12 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	p := root.PersistentFlags()
-	p.StringVar(&flagContext, "context", os.Getenv("CW_CONTEXT"), "context name")
-	p.StringVar(&flagEdge, "edge", os.Getenv("CW_EDGE"), "interchange edge URL (override)")
-	p.StringVar(&flagToken, "token", os.Getenv("CW_TOKEN"), "use this bearer token directly (skip the token store)")
-	p.StringVar(&flagIdentity, "identity", os.Getenv("CW_IDENTITY"), "agent identity file (for --agent login)")
-	p.BoolVar(&flagJSON, "json", false, "machine-readable JSON output")
-	// auth command group is registered in Task 6.
+	p.StringVar(flagContext, "context", os.Getenv("CW_CONTEXT"), "context name")
+	p.StringVar(flagEdge, "edge", os.Getenv("CW_EDGE"), "interchange edge URL (override)")
+	p.StringVar(flagToken, "token", os.Getenv("CW_TOKEN"), "use this bearer token directly (skip the token store)")
+	p.StringVar(flagIdentity, "identity", os.Getenv("CW_IDENTITY"), "agent identity file (for --agent login)")
+	p.BoolVar(flagJSON, "json", false, "machine-readable JSON output")
+	root.AddCommand(auth.NewCmd(flags))
 	return root
 }
 
