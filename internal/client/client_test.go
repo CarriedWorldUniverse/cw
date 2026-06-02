@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -77,5 +78,23 @@ func TestDo401RefreshRetry(t *testing.T) {
 	resp, body, err := c.Get(context.Background(), "ledger", "/ping")
 	if err != nil || resp.StatusCode != 200 || string(body) != "pong" {
 		t.Fatalf("Get after 401-retry: %v status=%d body=%q", err, resp.StatusCode, body)
+	}
+}
+
+// TestDo401RefreshFailsReauth: a not-yet-expired cached token that the server
+// 401s, with a refresh token the server rejects → the reactive refresh fails and
+// Do propagates ErrReauth (not a bare 401).
+func TestDo401RefreshFailsReauth(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	srv := stub(t)
+	ts := tokenstore.New(srv.URL, "dev", "u1")
+	_ = ts.SaveRefresh("r-bad") // stub only accepts "r-old"
+	_ = ts.SaveAccess("a-stale", time.Now().Add(10*time.Minute))
+
+	c := New(srv.URL, ts, oidc.New(srv.URL))
+	_, _, err := c.Get(context.Background(), "ledger", "/ping")
+	if !errors.Is(err, ErrReauth) {
+		t.Fatalf("err = %v, want ErrReauth", err)
 	}
 }

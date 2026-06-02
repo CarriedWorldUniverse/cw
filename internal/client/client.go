@@ -105,11 +105,16 @@ func (c *Client) Do(ctx context.Context, method, pillar, path string, body []byt
 	if err != nil {
 		return nil, nil, err
 	}
-	// One refresh-and-retry on 401 (token may have been revoked server-side).
+	// One refresh-and-retry on 401 (token may have been revoked server-side). If
+	// the refresh itself fails, propagate that error (ErrReauth) rather than
+	// returning the bare 401 — so callers get the same "run cw auth login" signal
+	// the proactive path gives, not an unexplained 401.
 	if resp.StatusCode == http.StatusUnauthorized && c.staticToken == "" {
-		if fresh, rerr := c.refresh(ctx); rerr == nil {
-			return c.do(ctx, method, c.URL(pillar, path), fresh, body)
+		fresh, rerr := c.refresh(ctx)
+		if rerr != nil {
+			return nil, nil, rerr
 		}
+		return c.do(ctx, method, c.URL(pillar, path), fresh, body)
 	}
 	return resp, raw, nil
 }
