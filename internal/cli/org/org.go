@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/herald"
@@ -74,7 +75,7 @@ func newDeleteCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 		Short: "Delete (purge) an org; --confirm must equal the org name",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if confirm == "" {
+			if strings.TrimSpace(confirm) == "" {
 				return fmt.Errorf("pass --confirm <org-name> to delete")
 			}
 			c, _, _, err := cmdutil.Session(gf)
@@ -85,7 +86,7 @@ func newDeleteCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "deleted %s (purged: %v)\n", res.Deleted, res.Pillars)
+			fmt.Fprintf(os.Stderr, "deleted %s (purged: %s)\n", res.Deleted, strings.Join(res.Pillars, ", "))
 			return nil
 		},
 	}

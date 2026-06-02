@@ -58,3 +58,33 @@ func TestDeleteRequiresConfirm(t *testing.T) {
 		t.Fatal("delete must not hit the server when --confirm is omitted")
 	}
 }
+
+// TestProductToggleWiring proves enable hits .../enable and disable hits
+// .../disable (the shared toggle command dispatches to the right herald func).
+func TestProductToggleWiring(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	var hits []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/orgs/o1/products/cairn/enable", func(w http.ResponseWriter, _ *http.Request) {
+		hits = append(hits, "enable")
+		_, _ = w.Write([]byte(`{"cairn":true}`))
+	})
+	mux.HandleFunc("POST /herald/api/orgs/o1/products/cairn/disable", func(w http.ResponseWriter, _ *http.Request) {
+		hits = append(hits, "disable")
+		_, _ = w.Write([]byte(`{"cairn":false}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	for _, args := range [][]string{{"enable", "o1", "cairn"}, {"disable", "o1", "cairn"}} {
+		cmd := NewCmd(gf)
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("execute %v: %v", args, err)
+		}
+	}
+	if len(hits) != 2 || hits[0] != "enable" || hits[1] != "disable" {
+		t.Fatalf("endpoint routing = %v", hits)
+	}
+}
