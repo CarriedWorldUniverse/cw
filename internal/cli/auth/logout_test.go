@@ -42,3 +42,16 @@ func TestLogoutClearsTokens(t *testing.T) {
 		t.Fatal("refresh token not cleared from keychain")
 	}
 }
+
+func TestLogoutAlreadyLoggedOut(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	// No server, no stored tokens — logout must still succeed cleanly.
+	cfg := &config.Config{CurrentContext: "dev", Contexts: map[string]config.Context{
+		"dev": {Edge: "http://unused", Identity: config.Identity{Kind: "human", Subject: "u1"}},
+	}}
+	_ = cfg.Save()
+	if err := runLogout(&GlobalFlags{}); err != nil {
+		t.Fatalf("expected clean logout on empty keychain, got: %v", err)
+	}
+}

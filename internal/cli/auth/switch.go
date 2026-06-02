@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/CarriedWorldUniverse/cw/internal/config"
 	"github.com/spf13/cobra"
@@ -24,7 +25,8 @@ func newSwitchCmd(gf *GlobalFlags) *cobra.Command {
 			if err := cfg.Save(); err != nil {
 				return err
 			}
-			fmt.Printf("switched to %q\n", args[0])
+			// Confirmation to stderr — stdout stays clean for scripting.
+			fmt.Fprintf(os.Stderr, "switched to %q\n", args[0])
 			return nil
 		},
 	}
