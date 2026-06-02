@@ -48,7 +48,7 @@ func newLoginCmd(gf *GlobalFlags) *cobra.Command {
 				return fmt.Errorf("no edge: pass --edge <url> on first login")
 			}
 			if agent {
-				if err := loadAgentIdentity(&opts, gf); err != nil {
+				if err := loadAgentIdentity(&opts); err != nil {
 					return err
 				}
 			} else {
@@ -67,9 +67,9 @@ func newLoginCmd(gf *GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-// loadAgentIdentity fills agentID/slug/seed from flags/env (the identity file is
-// a later refinement; env + flags cover the ToolRunner path now).
-func loadAgentIdentity(o *loginOpts, gf *GlobalFlags) error {
+// loadAgentIdentity fills agentID/slug/seed from flags/env (the identity-file
+// source is a later refinement; env + flags cover the ToolRunner path now).
+func loadAgentIdentity(o *loginOpts) error {
 	if o.agentID == "" || o.slug == "" {
 		return fmt.Errorf("--agent requires --agent-id and --slug (or CW_AGENT_ID/CW_AGENT_SLUG)")
 	}
@@ -89,6 +89,9 @@ func runLogin(ctx context.Context, o loginOpts) error {
 	var tok oidc.Token
 	var err error
 	if o.agent {
+		// TokenEndpoint here is for the assertion audience; JWTBearerGrant calls
+		// it again internally (two discovery round-trips on agent login — fine at
+		// human-paced login, no caching needed).
 		var tu string
 		tu, err = oc.TokenEndpoint(ctx)
 		if err != nil {
@@ -107,6 +110,8 @@ func runLogin(ctx context.Context, o loginOpts) error {
 		return err
 	}
 
+	// Claims are unverified (display + keychain-key only); type-asserts yield
+	// zero values on a non-JWT/opaque token, so fall back below.
 	claims, _ := identity.DecodeAccessClaims(tok.AccessToken)
 	subject, _ := claims["sub"].(string)
 	kind, _ := claims["kind"].(string)
@@ -120,6 +125,11 @@ func runLogin(ctx context.Context, o loginOpts) error {
 	display := o.username
 	if o.agent {
 		display = o.slug
+	}
+	// subject is the keychain-key discriminant (multi-account on one edge); never
+	// leave it blank if herald returned an opaque/non-JWT token.
+	if subject == "" {
+		subject = display
 	}
 
 	store := tokenstore.New(o.edge, o.contextName, subject)
