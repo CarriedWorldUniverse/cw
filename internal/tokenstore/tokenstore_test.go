@@ -1,6 +1,8 @@
 package tokenstore
 
 import (
+	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -41,5 +43,21 @@ func TestRefreshAndAccessRoundTrip(t *testing.T) {
 	}
 	if _, _, err := s.Access(); err == nil {
 		t.Fatal("Access after Clear should error")
+	}
+}
+
+func TestClearIdempotentAndAccessAbsent(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	s := New("http://edge:8080", "fresh", "u9")
+
+	// Clear on a never-written store tolerates not-found (keychain + file).
+	if err := s.Clear(); err != nil {
+		t.Fatalf("Clear on empty store: %v", err)
+	}
+	// Access on an absent cache wraps os.ErrNotExist so callers can detect it.
+	_, _, err := s.Access()
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Access absent err = %v, want os.ErrNotExist", err)
 	}
 }

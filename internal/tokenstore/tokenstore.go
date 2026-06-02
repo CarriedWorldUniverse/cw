@@ -21,20 +21,20 @@ const keyringService = "cw"
 
 // Store is one context's token storage.
 type Store struct {
-	edge    string
-	context string
-	subject string
+	edge        string
+	contextName string
+	subject     string
 }
 
 // New builds a Store for an edge + context name + subject (the keychain key).
-func New(edge, context, subject string) *Store {
-	return &Store{edge: edge, context: context, subject: subject}
+func New(edge, contextName, subject string) *Store {
+	return &Store{edge: edge, contextName: contextName, subject: subject}
 }
 
 func (s *Store) keyringKey() string { return s.edge + "|" + s.subject }
 
 func (s *Store) accessPath() string {
-	return filepath.Join(config.Dir(), "tokens", s.context+".json")
+	return filepath.Join(config.Dir(), "tokens", s.contextName+".json")
 }
 
 // SaveRefresh stores the refresh token in the keychain.
@@ -59,19 +59,46 @@ type accessCache struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
-// SaveAccess caches the access token + its absolute expiry (0600).
+// SaveAccess caches the access token + its absolute expiry (0600). The write is
+// atomic (same-dir temp + rename) so a crash or a racing writer (the client
+// refreshes on every authed call; parallel agent invocations are plausible)
+// can't leave a torn cache file.
 func (s *Store) SaveAccess(token string, expiresAt time.Time) error {
-	if err := os.MkdirAll(filepath.Dir(s.accessPath()), 0o700); err != nil {
+	dir := filepath.Dir(s.accessPath())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("tokenstore: mkdir: %w", err)
 	}
-	b, _ := json.Marshal(accessCache{AccessToken: token, ExpiresAt: expiresAt})
-	if err := os.WriteFile(s.accessPath(), b, 0o600); err != nil {
+	b, err := json.Marshal(accessCache{AccessToken: token, ExpiresAt: expiresAt})
+	if err != nil {
+		return fmt.Errorf("tokenstore: marshal access: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".access-*.json.tmp")
+	if err != nil {
+		return fmt.Errorf("tokenstore: temp: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once renamed
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("tokenstore: chmod: %w", err)
+	}
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("tokenstore: write access: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("tokenstore: close access: %w", err)
+	}
+	if err := os.Rename(tmpName, s.accessPath()); err != nil {
+		return fmt.Errorf("tokenstore: rename access: %w", err)
 	}
 	return nil
 }
 
-// Access returns the cached access token + expiry, or an error if absent.
+// Access returns the cached access token + expiry, or an error if absent. A
+// missing cache wraps os.ErrNotExist (use errors.Is to detect it); a corrupt
+// cache returns a parse error. Callers that just need a token (the client)
+// treat any error as "refresh", so the distinction is informational.
 func (s *Store) Access() (string, time.Time, error) {
 	b, err := os.ReadFile(s.accessPath())
 	if err != nil {
