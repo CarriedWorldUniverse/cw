@@ -49,6 +49,32 @@ func TestHumanCreateWiring(t *testing.T) {
 	}
 }
 
+// TestHumanSetPasswordWiring: set-password --password-stdin posts the piped
+// secret to /humans/{id}/password.
+func TestHumanSetPasswordWiring(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	var gotBody string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/humans/h1/password", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"set-password", "h1", "--password-stdin"})
+	cmd.SetIn(strings.NewReader("newpass-passphrase\n"))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(gotBody, "newpass-passphrase") {
+		t.Fatalf("password body = %s", gotBody)
+	}
+}
+
 // TestReadSecret: --password-stdin reads + trims a line; empty when required errors.
 func TestReadSecret(t *testing.T) {
 	got, err := readSecret(strings.NewReader("topsecret\n"), true, true)
