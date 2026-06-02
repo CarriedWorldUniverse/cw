@@ -1,0 +1,77 @@
+package auth
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/CarriedWorldUniverse/cw/internal/identity"
+	"github.com/spf13/cobra"
+)
+
+// Info is the resolved identity for `whoami`.
+type Info struct {
+	Context   string   `json:"context"`
+	Subject   string   `json:"subject"`
+	Kind      string   `json:"kind"`
+	Org       string   `json:"org"`
+	Scopes    []string `json:"scopes"`
+	Products  []string `json:"products"`
+	ExpiresIn int      `json:"expires_in_seconds"`
+}
+
+func whoamiInfo(gf *GlobalFlags) (Info, error) {
+	c, _, name, err := session(gf)
+	if err != nil {
+		return Info{}, err
+	}
+	tok, err := c.AccessToken(context.Background()) // ensure-fresh
+	if err != nil {
+		return Info{}, err
+	}
+	claims, err := identity.DecodeAccessClaims(tok)
+	if err != nil {
+		return Info{}, err
+	}
+	info := Info{Context: name}
+	info.Subject, _ = claims["sub"].(string)
+	info.Kind, _ = claims["kind"].(string)
+	info.Org, _ = claims["org"].(string)
+	if sc, _ := claims["scope"].(string); sc != "" {
+		info.Scopes = strings.Fields(sc)
+	}
+	if prods, ok := claims["products"].([]any); ok {
+		for _, p := range prods {
+			if s, _ := p.(string); s != "" {
+				info.Products = append(info.Products, s)
+			}
+		}
+	}
+	if exp, ok := claims["exp"].(float64); ok {
+		info.ExpiresIn = int(time.Until(time.Unix(int64(exp), 0)).Seconds())
+	}
+	return info, nil
+}
+
+func newWhoamiCmd(gf *GlobalFlags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "whoami",
+		Short: "Show the current identity (subject, org, scopes, products)",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			info, err := whoamiInfo(gf)
+			if err != nil {
+				return err
+			}
+			if gf.JSON {
+				return json.NewEncoder(os.Stdout).Encode(info)
+			}
+			fmt.Printf("context:  %s\nsubject:  %s\nkind:     %s\norg:      %s\nscopes:   %s\nproducts: %s\nexpires:  %ds\n",
+				info.Context, info.Subject, info.Kind, info.Org,
+				strings.Join(info.Scopes, " "), strings.Join(info.Products, " "), info.ExpiresIn)
+			return nil
+		},
+	}
+}
