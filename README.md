@@ -81,4 +81,4 @@ Provisioning a working identity end to end:
 
     ORG=$(cw org create acme)
     H=$(cw human create --org "$ORG" --name alice --scope knowledge:read --password-stdin <<< "$PW")
-    cw auth login --edge <edge>      # log in as $H
+    cw auth login --edge <edge>      # at the prompt, enter $H and $PW
