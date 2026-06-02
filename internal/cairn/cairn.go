@@ -49,8 +49,12 @@ type OpenPullInput struct {
 	DefinitionOfDone string `json:"definition_of_done,omitempty"`
 }
 
-func reposPath(org string) string       { return "/api/orgs/" + org + "/repos" }
-func pullsPath(org, slug string) string { return reposPath(org) + "/" + slug + "/pulls" }
+// Path segments are caller-supplied (org id, repo slug, pull id) — PathEscape
+// each so an odd character can't malform or misroute the URL.
+func reposPath(org string) string { return "/api/orgs/" + url.PathEscape(org) + "/repos" }
+func pullsPath(org, slug string) string {
+	return reposPath(org) + "/" + url.PathEscape(slug) + "/pulls"
+}
 
 // do is the shared request/decode/error-map helper.
 func do(ctx context.Context, c *client.Client, method, path string, body, out any) error {
@@ -124,12 +128,12 @@ func ListPulls(ctx context.Context, c *client.Client, org, slug, state string) (
 
 func GetPull(ctx context.Context, c *client.Client, org, slug, id string) (Pull, error) {
 	var p Pull
-	err := do(ctx, c, http.MethodGet, pullsPath(org, slug)+"/"+id, nil, &p)
+	err := do(ctx, c, http.MethodGet, pullsPath(org, slug)+"/"+url.PathEscape(id), nil, &p)
 	return p, err
 }
 
 func MergePull(ctx context.Context, c *client.Client, org, slug, id string) (MergeResult, error) {
 	var r MergeResult
-	err := do(ctx, c, http.MethodPost, pullsPath(org, slug)+"/"+id+"/merge", nil, &r)
+	err := do(ctx, c, http.MethodPost, pullsPath(org, slug)+"/"+url.PathEscape(id)+"/merge", nil, &r)
 	return r, err
 }

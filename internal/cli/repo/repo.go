@@ -39,6 +39,9 @@ func newCreateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if gf.JSON {
+				return json.NewEncoder(os.Stdout).Encode(rp)
+			}
 			fmt.Fprintf(os.Stderr, "created %s/%s\n", rp.Org, rp.Slug)
 			fmt.Println(cmdutil.CairnGitURL(ctx.Edge, rp.Org, rp.Slug))
 			return nil
