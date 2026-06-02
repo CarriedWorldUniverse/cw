@@ -31,6 +31,23 @@ type CreateHumanInput struct {
 	DisplayName string   `json:"display_name"`
 	Scopes      []string `json:"scopes,omitempty"`
 }
+type Agent struct {
+	ID               string   `json:"id"`
+	Kind             string   `json:"kind"`
+	DisplayName      string   `json:"display_name"`
+	Org              string   `json:"org"`
+	ResponsibleHuman string   `json:"responsible_human"`
+	Fingerprint      string   `json:"fingerprint"`
+	Status           string   `json:"status"`
+	Active           bool     `json:"active"`
+	Scopes           []string `json:"scopes"`
+}
+type CreateAgentInput struct {
+	DisplayName      string   `json:"display_name"`
+	ResponsibleHuman string   `json:"responsible_human"`
+	CasketPubkey     string   `json:"casket_pubkey"`
+	Scopes           []string `json:"scopes,omitempty"`
+}
 type DeleteResult struct {
 	Deleted string   `json:"deleted"`
 	Pillars []string `json:"pillars"`
@@ -125,6 +142,13 @@ func CreateHuman(ctx context.Context, c *client.Client, org string, in CreateHum
 	path := "/api/orgs/" + url.PathEscape(org) + "/humans"
 	err := do(ctx, c, http.MethodPost, path, in, &h)
 	return h, err
+}
+
+func CreateAgent(ctx context.Context, c *client.Client, org string, in CreateAgentInput) (Agent, error) {
+	var a Agent
+	path := "/api/orgs/" + url.PathEscape(org) + "/agents"
+	err := do(ctx, c, http.MethodPost, path, in, &a)
+	return a, err
 }
 
 func SetHumanPassword(ctx context.Context, c *client.Client, id, password string) error {
