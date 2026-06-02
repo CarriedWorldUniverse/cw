@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -66,6 +67,34 @@ func TestCreateWiring(t *testing.T) {
 	}
 	if !strings.Contains(gotPubkey, wantPub) {
 		t.Fatalf("posted body %q missing derived pubkey %q", gotPubkey, wantPub)
+	}
+}
+
+// TestCreateJSON: --json emits the full Agent as valid JSON to stdout.
+func TestCreateJSON(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	t.Setenv("CW_OWNER_SEED", "test-owner-seed")
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/orgs/o1/agents", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"a1","kind":"agent","display_name":"builder","org":"o1"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok", JSON: true}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"create", "--org", "o1", "--name", "builder", "--slug", "builder", "--responsible-human", "h1"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("create --json: %v", err)
+	}
+	var got map[string]any
+	if err := json.NewDecoder(&out).Decode(&got); err != nil {
+		t.Fatalf("--json output not valid JSON: %v\nraw: %s", err, out.String())
+	}
+	if got["id"] != "a1" || got["kind"] != "agent" {
+		t.Fatalf("unexpected --json payload: %v", got)
 	}
 }
 
