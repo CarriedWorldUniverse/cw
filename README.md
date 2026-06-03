@@ -104,6 +104,11 @@ Provisioning a working identity end to end:
     cw agent keygen                              # mint an owner seed -> set as CW_OWNER_SEED
     cw agent create --org <org-id> --name builder --slug builder \
         --responsible-human <human-id> --scope repo:read --scope repo:write
+    cw agent pubkey --slug builder               # offline: derive this agent's casket pubkey + fingerprint from CW_OWNER_SEED
+
+`cw agent pubkey` makes no network call. Its `fingerprint` matches herald's
+stored value, so you can verify a local `CW_OWNER_SEED`+`--slug` derives an
+already-registered agent by comparing it to `cw whoami --remote`.
 
 An agent's ed25519 "casket" key is derived deterministically from `CW_OWNER_SEED`
 + `--slug` (so creation and `cw auth login --agent` produce the same key; agents
