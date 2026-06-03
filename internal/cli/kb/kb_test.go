@@ -1,6 +1,8 @@
 package kb
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -127,5 +129,31 @@ func TestKbDeleteRequiresYes(t *testing.T) {
 	}
 	if called {
 		t.Fatal("delete without --yes must not hit the server")
+	}
+}
+
+// TestKbUpdateJSON: --json emits the updated Entry to stdout.
+func TestKbUpdateJSON(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /knowledge/api/knowledge/e1", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"e1","topic":"new","visibility":"org"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok", JSON: true}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"update", "e1", "--topic", "new"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("update --json: %v", err)
+	}
+	var got map[string]any
+	if err := json.NewDecoder(&out).Decode(&got); err != nil {
+		t.Fatalf("--json output not valid JSON: %v\n%s", err, out.String())
+	}
+	if got["id"] != "e1" || got["topic"] != "new" {
+		t.Fatalf("unexpected --json: %v", got)
 	}
 }

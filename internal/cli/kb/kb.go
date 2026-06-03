@@ -170,7 +170,7 @@ func newUpdateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 				return err
 			}
 			if gf.JSON {
-				return json.NewEncoder(os.Stdout).Encode(e)
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(e)
 			}
 			fmt.Fprintf(os.Stderr, "updated %s (topic %q, %s)\n", e.ID, e.Topic, e.Visibility)
 			return nil
