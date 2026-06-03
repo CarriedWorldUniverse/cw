@@ -21,11 +21,16 @@ keychain; the access token is cached (0600) and silently refreshed. Use
 
     cw whoami            # current identity: context, edge, kind, subject, display, slug, org, scopes, products, expiry
     cw whoami --json
+    cw whoami --remote   # server-authoritative record (status, org name, live scopes, agent responsible-human + fingerprint) via herald GET /api/me
     cw auth status       # all contexts + token freshness
 
 `cw whoami` (alias: `cw auth whoami`) merges the token claims (ids, scopes,
 products, expiry) with the config context (display name, agent slug, edge) — all
 local, no network call.
+
+`--remote` calls herald (`GET /api/me`) for the authoritative record — the only
+whoami path that makes a network call; it also proves the token works
+server-side.
 
 ## Repos & PRs (cairn)
 

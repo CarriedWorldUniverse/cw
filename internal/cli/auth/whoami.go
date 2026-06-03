@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/CarriedWorldUniverse/cw/internal/herald"
 	"github.com/CarriedWorldUniverse/cw/internal/identity"
 	"github.com/spf13/cobra"
 )
@@ -66,34 +66,75 @@ func whoamiInfo(gf *GlobalFlags) (Info, error) {
 }
 
 // NewWhoamiCmd builds the whoami command, registered both at the top level
-// (`cw whoami`) and under `cw auth` (the alias).
+// (`cw whoami`) and under `cw auth` (the alias). --remote fetches the
+// server-authoritative record from herald's GET /api/me.
 func NewWhoamiCmd(gf *GlobalFlags) *cobra.Command {
-	return &cobra.Command{
+	var remote bool
+	cmd := &cobra.Command{
 		Use:   "whoami",
-		Short: "Show the current identity (subject, org, scopes, products)",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Short: "Show the current identity (local; --remote for the server-authoritative record)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if remote {
+				return remoteWhoami(cmd, gf)
+			}
 			info, err := whoamiInfo(gf)
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
 			if gf.JSON {
-				return json.NewEncoder(os.Stdout).Encode(info)
+				return json.NewEncoder(out).Encode(info)
 			}
 			expires := fmt.Sprintf("%ds", info.ExpiresIn)
 			if info.ExpiresIn <= 0 {
 				expires = "expired"
 			}
-			fmt.Printf("context:  %s\nedge:     %s\nkind:     %s\nsubject:  %s\n",
+			fmt.Fprintf(out, "context:  %s\nedge:     %s\nkind:     %s\nsubject:  %s\n",
 				info.Context, info.Edge, info.Kind, info.Subject)
 			if info.Display != "" {
-				fmt.Printf("display:  %s\n", info.Display)
+				fmt.Fprintf(out, "display:  %s\n", info.Display)
 			}
 			if info.Slug != "" {
-				fmt.Printf("slug:     %s\n", info.Slug)
+				fmt.Fprintf(out, "slug:     %s\n", info.Slug)
 			}
-			fmt.Printf("org:      %s\nscopes:   %s\nproducts: %s\nexpires:  %s\n",
+			fmt.Fprintf(out, "org:      %s\nscopes:   %s\nproducts: %s\nexpires:  %s\n",
 				info.Org, strings.Join(info.Scopes, " "), strings.Join(info.Products, " "), expires)
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&remote, "remote", false, "fetch the server-authoritative record from herald (GET /api/me)")
+	return cmd
+}
+
+// remoteWhoami renders herald's authoritative identity record (status, org name,
+// server scopes, + agent responsible_human/fingerprint).
+func remoteWhoami(cmd *cobra.Command, gf *GlobalFlags) error {
+	c, sess, name, err := session(gf)
+	if err != nil {
+		return err
+	}
+	ui, err := herald.Me(cmd.Context(), c)
+	if err != nil {
+		return err
+	}
+	out := cmd.OutOrStdout()
+	if gf.JSON {
+		return json.NewEncoder(out).Encode(ui)
+	}
+	fmt.Fprintf(out, "context:  %s\nedge:     %s\nid:       %s\nkind:     %s\n", name, sess.Edge, ui.ID, ui.Kind)
+	if ui.DisplayName != "" {
+		fmt.Fprintf(out, "display:  %s\n", ui.DisplayName)
+	}
+	org := ui.Org
+	if ui.OrgName != "" {
+		org = fmt.Sprintf("%s (%s)", ui.Org, ui.OrgName)
+	}
+	fmt.Fprintf(out, "org:      %s\nstatus:   %s\nscopes:   %s\n", org, ui.Status, strings.Join(ui.Scopes, " "))
+	if ui.ResponsibleHuman != "" {
+		fmt.Fprintf(out, "responsible_human: %s\n", ui.ResponsibleHuman)
+	}
+	if ui.Fingerprint != "" {
+		fmt.Fprintf(out, "fingerprint:       %s\n", ui.Fingerprint)
+	}
+	return nil
 }

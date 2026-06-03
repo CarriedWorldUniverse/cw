@@ -184,3 +184,43 @@ func TestCreateAgent(t *testing.T) {
 		t.Fatalf("CreateAgent: %v %+v", err, a)
 	}
 }
+
+func TestMe(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/me", func(w http.ResponseWriter, r *http.Request) {
+		// Return a human record (empty agent fields) the first call, an agent the second.
+		if r.Header.Get("X-Want") == "agent" {
+			_, _ = w.Write([]byte(`{"id":"a1","kind":"agent","display_name":"builder","org":"o1","org_name":"acme","status":"active","scopes":["repo:read"],"responsible_human":"h1","fingerprint":"SHA256:zzz"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"h1","kind":"human","display_name":"alice@x","org":"o1","org_name":"acme","status":"active","scopes":["issue:read"]}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := client.WithStaticToken(srv.URL, "tok")
+
+	hu, err := Me(context.Background(), c)
+	if err != nil || hu.ID != "h1" || hu.Kind != "human" || hu.OrgName != "acme" || hu.Status != "active" {
+		t.Fatalf("Me(human): %v %+v", err, hu)
+	}
+	if hu.ResponsibleHuman != "" || hu.Fingerprint != "" {
+		t.Fatalf("human should have no agent fields: %+v", hu)
+	}
+	if len(hu.Scopes) != 1 || hu.Scopes[0] != "issue:read" {
+		t.Fatalf("human scopes: %v", hu.Scopes)
+	}
+}
+
+func TestMeError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/me", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"missing identity"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := client.WithStaticToken(srv.URL, "tok")
+	if _, err := Me(context.Background(), c); err == nil || !strings.Contains(err.Error(), "missing identity") {
+		t.Fatalf("Me error: want server message, got %v", err)
+	}
+}
