@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
-	"github.com/CarriedWorldUniverse/cw/internal/commonplace"
+	"github.com/CarriedWorldUniverse/cwb-client/commonplace"
 	"github.com/spf13/cobra"
 )
 

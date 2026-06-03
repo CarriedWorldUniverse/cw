@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CarriedWorldUniverse/cw/internal/herald"
-	"github.com/CarriedWorldUniverse/cw/internal/identity"
+	"github.com/CarriedWorldUniverse/cwb-client/herald"
+	"github.com/CarriedWorldUniverse/cwb-client/identity"
 	"github.com/spf13/cobra"
 )
 

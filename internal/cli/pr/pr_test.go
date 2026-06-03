@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/CarriedWorldUniverse/cw/internal/cairn"
-	"github.com/CarriedWorldUniverse/cw/internal/client"
+	"github.com/CarriedWorldUniverse/cwb-client/cairn"
+	"github.com/CarriedWorldUniverse/cwb-client/client"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 )
 
