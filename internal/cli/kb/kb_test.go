@@ -1,6 +1,7 @@
 package kb
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,5 +47,85 @@ func TestStoreContentFromReader(t *testing.T) {
 	}
 	if _, err := readContent("", strings.NewReader("")); err == nil {
 		t.Fatal("empty flag + empty reader should error")
+	}
+}
+
+func TestKbUpdateWiring(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	var body, path string
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /knowledge/api/knowledge/e1", func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_, _ = w.Write([]byte(`{"id":"e1","topic":"new","visibility":"org"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"update", "e1", "--topic", "new"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if path != "/knowledge/api/knowledge/e1" || !strings.Contains(body, `"topic":"new"`) || strings.Contains(body, "content") {
+		t.Fatalf("path=%q body=%q", path, body)
+	}
+}
+
+func TestKbUpdateNothing(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	called := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /knowledge/api/knowledge/e1", func(http.ResponseWriter, *http.Request) { called = true })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"update", "e1"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected nothing-to-update error")
+	}
+	if called {
+		t.Fatal("update with no flags must not hit the server")
+	}
+}
+
+func TestKbDeleteWiring(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	hit := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /knowledge/api/knowledge/e1", func(w http.ResponseWriter, _ *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"delete", "e1", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !hit {
+		t.Fatal("delete endpoint not hit")
+	}
+}
+
+func TestKbDeleteRequiresYes(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	called := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /knowledge/api/knowledge/e1", func(http.ResponseWriter, *http.Request) { called = true })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"delete", "e1"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected --yes-required error")
+	}
+	if called {
+		t.Fatal("delete without --yes must not hit the server")
 	}
 }

@@ -1,7 +1,7 @@
 github.com/CarriedWorldUniverse/casket-go v0.1.0 h1:t+DvXs8vhaNcTfkSS/sqK47fBTNVRdHfF7DT/ur0jtY=
 github.com/CarriedWorldUniverse/casket-go v0.1.0/go.mod h1:v0y8kPW/WmusBw+Q3ZtRYhVwoK/WVVVXHWSc/oRVWBo=
-github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260603043708-638519b33b20 h1:S/UMFr3K+6Wj75vh1UrSTylS8aQZQJ4H7xpUAqlhzWk=
-github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260603043708-638519b33b20/go.mod h1:mYs7BzEiFdFx5hDaahzRutND9gjxixt++t/S+XbQQvA=
+github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260603045028-1db44b18fd1a h1:m8jl+5HLFCR61IHUYgj+fHxsez93Y7/5f/cZmx5qTg0=
+github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260603045028-1db44b18fd1a/go.mod h1:mYs7BzEiFdFx5hDaahzRutND9gjxixt++t/S+XbQQvA=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/danieljoos/wincred v1.2.3 h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ=
 github.com/danieljoos/wincred v1.2.3/go.mod h1:6qqX0WNrS4RzPZ1tnroDzq9kY3fu1KwE7MRLQK4X0bs=
