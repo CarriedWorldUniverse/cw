@@ -113,9 +113,41 @@ func TestWhoamiRemote(t *testing.T) {
 		t.Fatalf("endpoint not hit: %q", hit)
 	}
 	s := out.String()
-	for _, want := range []string{"agent", "builder", "acme", "active", "repo:write", "h1", "SHA256:zzz"} {
+	for _, want := range []string{"agent", "builder", "o1 (acme)", "active", "repo:write", "responsible_human: h1", "SHA256:zzz"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("--remote output missing %q:\n%s", want, s)
+		}
+	}
+}
+
+// TestWhoamiRemoteHuman: the human text render omits the agent-only lines and
+// shows org without an agent fingerprint/responsible-human.
+func TestWhoamiRemoteHuman(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/me", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"h1","kind":"human","display_name":"alice@x","org":"o1","org_name":"acme","status":"active","scopes":["issue:read"]}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewWhoamiCmd(gf)
+	cmd.SetArgs([]string{"--remote"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("whoami --remote (human): %v", err)
+	}
+	s := out.String()
+	for _, want := range []string{"human", "alice@x", "o1 (acme)", "issue:read"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("human --remote output missing %q:\n%s", want, s)
+		}
+	}
+	for _, absent := range []string{"responsible_human", "fingerprint"} {
+		if strings.Contains(s, absent) {
+			t.Fatalf("human --remote output should omit %q:\n%s", absent, s)
 		}
 	}
 }

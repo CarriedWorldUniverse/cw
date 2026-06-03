@@ -127,7 +127,7 @@ func remoteWhoami(cmd *cobra.Command, gf *GlobalFlags) error {
 	}
 	org := ui.Org
 	if ui.OrgName != "" {
-		org = fmt.Sprintf("%s  (%s)", ui.Org, ui.OrgName)
+		org = fmt.Sprintf("%s (%s)", ui.Org, ui.OrgName)
 	}
 	fmt.Fprintf(out, "org:      %s\nstatus:   %s\nscopes:   %s\n", org, ui.Status, strings.Join(ui.Scopes, " "))
 	if ui.ResponsibleHuman != "" {
