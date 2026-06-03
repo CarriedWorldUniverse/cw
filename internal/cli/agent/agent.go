@@ -20,7 +20,7 @@ import (
 
 func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{Use: "agent", Short: "Provision agent identities (herald admin)"}
-	cmd.AddCommand(newKeygenCmd(), newCreateCmd(gf), newPubkeyCmd(gf))
+	cmd.AddCommand(newKeygenCmd(), newCreateCmd(gf), newPubkeyCmd(gf), newEnrollCmd(gf))
 	return cmd
 }
 
