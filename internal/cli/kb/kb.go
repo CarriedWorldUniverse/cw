@@ -15,7 +15,7 @@ import (
 
 func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{Use: "kb", Short: "Manage commonplace knowledge"}
-	cmd.AddCommand(newStoreCmd(gf), newSearchCmd(gf), newListCmd(gf))
+	cmd.AddCommand(newStoreCmd(gf), newSearchCmd(gf), newListCmd(gf), newUpdateCmd(gf), newDeleteCmd(gf))
 	return cmd
 }
 
@@ -133,6 +133,79 @@ func newListCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			return nil
 		},
 	}
+	return cmd
+}
+
+func newUpdateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+	var topic, content, visibility string
+	var tags []string
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update a knowledge entry (only the flags you set; --tag replaces all tags)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			f := cmd.Flags()
+			var in commonplace.UpdateInput
+			if f.Changed("topic") {
+				in.Topic = &topic
+			}
+			if f.Changed("content") {
+				in.Content = &content
+			}
+			if f.Changed("visibility") {
+				in.Visibility = &visibility
+			}
+			if f.Changed("tag") {
+				in.Tags = &tags
+			}
+			if in.Topic == nil && in.Content == nil && in.Visibility == nil && in.Tags == nil {
+				return fmt.Errorf("nothing to update — set --topic/--content/--visibility/--tag")
+			}
+			c, _, _, err := cmdutil.Session(gf)
+			if err != nil {
+				return err
+			}
+			e, err := commonplace.Update(cmd.Context(), c, args[0], in)
+			if err != nil {
+				return err
+			}
+			if gf.JSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(e)
+			}
+			fmt.Fprintf(os.Stderr, "updated %s (topic %q, %s)\n", e.ID, e.Topic, e.Visibility)
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&topic, "topic", "", "new topic")
+	f.StringVar(&content, "content", "", "new content")
+	f.StringVar(&visibility, "visibility", "", "org | private")
+	f.StringArrayVar(&tags, "tag", nil, "replace the entry's tags (repeatable)")
+	return cmd
+}
+
+func newDeleteCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "delete <id> --yes",
+		Short: "Delete a knowledge entry (irreversible; requires --yes)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf("pass --yes to confirm deletion (irreversible)")
+			}
+			c, _, _, err := cmdutil.Session(gf)
+			if err != nil {
+				return err
+			}
+			if err := commonplace.Delete(cmd.Context(), c, args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "deleted %s\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the irreversible delete")
 	return cmd
 }
 
