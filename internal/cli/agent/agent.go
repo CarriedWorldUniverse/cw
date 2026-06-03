@@ -14,12 +14,48 @@ import (
 	casket "github.com/CarriedWorldUniverse/casket-go"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/herald"
+	"github.com/CarriedWorldUniverse/cw/internal/identity"
 	"github.com/spf13/cobra"
 )
 
 func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{Use: "agent", Short: "Provision agent identities (herald admin)"}
-	cmd.AddCommand(newKeygenCmd(), newCreateCmd(gf))
+	cmd.AddCommand(newKeygenCmd(), newCreateCmd(gf), newPubkeyCmd(gf))
+	return cmd
+}
+
+func newPubkeyCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+	var slug string
+	cmd := &cobra.Command{
+		Use:   "pubkey --slug <slug>",
+		Short: "Derive an agent's casket pubkey + fingerprint from CW_OWNER_SEED (offline; no herald call)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if slug == "" {
+				return fmt.Errorf("--slug is required")
+			}
+			seed := os.Getenv("CW_OWNER_SEED")
+			if seed == "" {
+				return fmt.Errorf("agent pubkey requires the owner seed in CW_OWNER_SEED")
+			}
+			_, pub, err := casket.DeriveAgentKey([]byte(seed), slug)
+			if err != nil {
+				return fmt.Errorf("derive agent key: %w", err)
+			}
+			pubB64 := base64.StdEncoding.EncodeToString(pub)
+			fp := identity.Fingerprint(pub)
+			out := cmd.OutOrStdout()
+			if gf.JSON {
+				return json.NewEncoder(out).Encode(struct {
+					Slug        string `json:"slug"`
+					Pubkey      string `json:"pubkey"`
+					Fingerprint string `json:"fingerprint"`
+				}{slug, pubB64, fp})
+			}
+			fmt.Fprintf(out, "pubkey:      %s\nfingerprint: %s\n", pubB64, fp)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&slug, "slug", "", "casket key slug (required)")
 	return cmd
 }
 
