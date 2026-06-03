@@ -155,3 +155,24 @@ func SetHumanPassword(ctx context.Context, c *client.Client, id, password string
 	path := "/api/humans/" + url.PathEscape(id) + "/password"
 	return do(ctx, c, http.MethodPost, path, map[string]string{"password": password}, nil)
 }
+
+// UserInfo is the caller's own authoritative identity from GET /api/me (agent
+// fields empty for humans).
+type UserInfo struct {
+	ID               string   `json:"id"`
+	Kind             string   `json:"kind"`
+	DisplayName      string   `json:"display_name"`
+	Org              string   `json:"org"`
+	OrgName          string   `json:"org_name"`
+	Status           string   `json:"status"`
+	Scopes           []string `json:"scopes"`
+	ResponsibleHuman string   `json:"responsible_human"`
+	Fingerprint      string   `json:"fingerprint"`
+}
+
+// Me returns the caller's own authoritative identity record (server-side).
+func Me(ctx context.Context, c *client.Client) (UserInfo, error) {
+	var ui UserInfo
+	err := do(ctx, c, http.MethodGet, "/api/me", nil, &ui)
+	return ui, err
+}
