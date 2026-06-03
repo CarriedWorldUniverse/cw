@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
-	"github.com/CarriedWorldUniverse/cw/internal/identity"
+	"github.com/CarriedWorldUniverse/cwb-client/identity"
 	casket "github.com/CarriedWorldUniverse/casket-go"
 )
 

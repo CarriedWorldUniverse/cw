@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarriedWorldUniverse/cw/internal/client"
+	"github.com/CarriedWorldUniverse/cwb-client/client"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/config"
-	"github.com/CarriedWorldUniverse/cw/internal/herald"
-	"github.com/CarriedWorldUniverse/cw/internal/identity"
-	"github.com/CarriedWorldUniverse/cw/internal/oidc"
+	"github.com/CarriedWorldUniverse/cwb-client/herald"
+	"github.com/CarriedWorldUniverse/cwb-client/identity"
+	"github.com/CarriedWorldUniverse/cwb-client/oidc"
 	"github.com/CarriedWorldUniverse/cw/internal/tokenstore"
 )
 

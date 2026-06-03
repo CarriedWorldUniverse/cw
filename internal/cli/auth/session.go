@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"github.com/CarriedWorldUniverse/cw/internal/client"
+	"github.com/CarriedWorldUniverse/cwb-client/client"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/config"
 )

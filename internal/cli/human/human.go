@@ -9,9 +9,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/CarriedWorldUniverse/cwb-client/herald"
+
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
-	"github.com/CarriedWorldUniverse/cw/internal/herald"
-	"github.com/CarriedWorldUniverse/cw/internal/identity"
+	"github.com/CarriedWorldUniverse/cw/internal/prompt"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -39,7 +40,7 @@ func readSecret(r io.Reader, passwordStdin, required bool) (string, error) {
 		return pw, nil
 	}
 	if f, ok := r.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		return identity.PromptPassword(f, "Password")
+		return prompt.PromptPassword(f, "Password")
 	}
 	if required {
 		return "", fmt.Errorf("provide the password via --password-stdin or an interactive terminal")

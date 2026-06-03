@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CarriedWorldUniverse/cw/internal/client"
-	"github.com/CarriedWorldUniverse/cw/internal/herald"
-	"github.com/CarriedWorldUniverse/cw/internal/identity"
-	"github.com/CarriedWorldUniverse/cw/internal/oidc"
+	"github.com/CarriedWorldUniverse/cwb-client/client"
+	"github.com/CarriedWorldUniverse/cwb-client/herald"
+	"github.com/CarriedWorldUniverse/cwb-client/identity"
+	"github.com/CarriedWorldUniverse/cwb-client/oidc"
 )
 
 // TestLiveWhoamiRemote logs in a provisioned agent and asserts herald.Me returns

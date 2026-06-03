@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/CarriedWorldUniverse/cw/internal/config"
-	"github.com/CarriedWorldUniverse/cw/internal/oidc"
+	"github.com/CarriedWorldUniverse/cwb-client/oidc"
 	"github.com/CarriedWorldUniverse/cw/internal/tokenstore"
 	"github.com/spf13/cobra"
 )

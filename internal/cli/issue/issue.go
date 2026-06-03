@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
-	"github.com/CarriedWorldUniverse/cw/internal/ledger"
+	"github.com/CarriedWorldUniverse/cwb-client/ledger"
 	"github.com/spf13/cobra"
 )
 

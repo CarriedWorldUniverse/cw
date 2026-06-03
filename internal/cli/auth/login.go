@@ -6,9 +6,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/CarriedWorldUniverse/cwb-client/identity"
+	"github.com/CarriedWorldUniverse/cwb-client/oidc"
+
 	"github.com/CarriedWorldUniverse/cw/internal/config"
-	"github.com/CarriedWorldUniverse/cw/internal/identity"
-	"github.com/CarriedWorldUniverse/cw/internal/oidc"
+	"github.com/CarriedWorldUniverse/cw/internal/prompt"
 	"github.com/CarriedWorldUniverse/cw/internal/tokenstore"
 	"github.com/spf13/cobra"
 )
@@ -52,7 +54,7 @@ func newLoginCmd(gf *GlobalFlags) *cobra.Command {
 					return err
 				}
 			} else {
-				u, p, err := identity.PromptHuman(os.Stdin)
+				u, p, err := prompt.PromptHuman(os.Stdin)
 				if err != nil {
 					return err
 				}

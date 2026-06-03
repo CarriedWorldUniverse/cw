@@ -7,9 +7,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/CarriedWorldUniverse/cw/internal/client"
+	"github.com/CarriedWorldUniverse/cwb-client/client"
+	"github.com/CarriedWorldUniverse/cwb-client/oidc"
+
 	"github.com/CarriedWorldUniverse/cw/internal/config"
-	"github.com/CarriedWorldUniverse/cw/internal/oidc"
 	"github.com/CarriedWorldUniverse/cw/internal/tokenstore"
 )
 
@@ -38,7 +39,7 @@ func Session(gf *GlobalFlags) (*client.Client, config.Context, string, error) {
 		return client.WithStaticToken(ctx.Edge, gf.Token), ctx, name, nil
 	}
 	store := tokenstore.New(ctx.Edge, name, ctx.Identity.Subject)
-	return client.New(ctx.Edge, store, oidc.New(ctx.Edge)), ctx, name, nil
+	return client.New(ctx.Edge, &storeSource{store: store, oc: oidc.New(ctx.Edge)}), ctx, name, nil
 }
 
 // ResolveRepo resolves a repo reference to (org, slug). ref is "<slug>" or

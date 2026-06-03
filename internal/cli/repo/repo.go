@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/CarriedWorldUniverse/cw/internal/cairn"
+	"github.com/CarriedWorldUniverse/cwb-client/cairn"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/spf13/cobra"
 )

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/CarriedWorldUniverse/cw/internal/cairn"
-	"github.com/CarriedWorldUniverse/cw/internal/client"
+	"github.com/CarriedWorldUniverse/cwb-client/cairn"
+	"github.com/CarriedWorldUniverse/cwb-client/client"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/config"
 	"github.com/spf13/cobra"
