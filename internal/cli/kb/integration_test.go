@@ -66,6 +66,54 @@ func TestLiveKB(t *testing.T) {
 	}
 }
 
+func TestLiveKBCrud(t *testing.T) {
+	edge := os.Getenv("CW_IT_EDGE")
+	if edge == "" {
+		t.Skip("set CW_IT_EDGE + CW_IT_USER + CW_IT_PASSWORD (knowledge:* identity) to run the live kb CRUD test")
+	}
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	c, _ := liveSession(t, edge)
+	ctx := context.Background()
+	marker := "cwkbcrud-" + time.Now().Format("150405")
+
+	stored, err := commonplace.Store(ctx, c, commonplace.StoreInput{Topic: marker, Content: "original " + marker, Visibility: "org"})
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	newTopic := marker + "-updated"
+	if _, err := commonplace.Update(ctx, c, stored.ID, commonplace.UpdateInput{Topic: &newTopic}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	entries, err := commonplace.List(ctx, c)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.ID == stored.ID {
+			found = true
+			if e.Topic != newTopic {
+				t.Fatalf("topic not updated: %q", e.Topic)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("entry %s missing after update", stored.ID)
+	}
+	if err := commonplace.Delete(ctx, c, stored.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	entries, err = commonplace.List(ctx, c)
+	if err != nil {
+		t.Fatalf("List after delete: %v", err)
+	}
+	for _, e := range entries {
+		if e.ID == stored.ID {
+			t.Fatalf("entry %s still present after delete", stored.ID)
+		}
+	}
+}
+
 // liveSession does a password grant against edge (CW_IT_USER/CW_IT_PASSWORD),
 // writes an "it" context + caches the access token, and returns a client built by
 // cmdutil.Session plus the resolved context. It mirrors the minimal token+context

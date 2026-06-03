@@ -71,6 +71,8 @@ Issues are scoped to your org by the token (no --org). Needs an identity with
     echo "..." | cw kb store --topic notes
     cw kb search "how does auth work" [--top-k 5]   # semantic (returns full entries)
     cw kb list
+    cw kb update <id> [--topic t] [--content c] [--visibility org|private] [--tag x]   # only the flags set; --tag replaces tags
+    cw kb delete <id> --yes                                                            # irreversible hard-delete
 
 Knowledge is scoped to your org by the token (no --org). Needs an identity with
 `knowledge:read`/`knowledge:write`. `store` reads content from `--content` or stdin.
