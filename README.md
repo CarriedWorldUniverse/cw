@@ -22,7 +22,8 @@ keychain; the access token is cached (0600) and silently refreshed. Use
     cw whoami            # current identity: context, edge, kind, subject, display, slug, org, scopes, products, expiry
     cw whoami --json
     cw whoami --remote   # server-authoritative record (status, org name, live scopes, agent responsible-human + fingerprint) via herald GET /api/me
-    cw auth status       # all contexts + token freshness
+    cw auth status          # all contexts + token freshness
+    cw auth status --json   # the same, as a JSON array (name/current/edge/kind/display/subject/org/state)
 
 `cw whoami` (alias: `cw auth whoami`) merges the token claims (ids, scopes,
 products, expiry) with the config context (display name, agent slug, edge) — all
