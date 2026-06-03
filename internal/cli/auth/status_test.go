@@ -45,6 +45,9 @@ func TestStatusJSON(t *testing.T) {
 	if got[0].Kind != "human" || got[1].Kind != "agent" || got[1].Display != "builder" {
 		t.Fatalf("fields: %+v", got)
 	}
+	if got[0].Subject != "u1" || got[0].Edge != "http://edge:8080" {
+		t.Fatalf("dev subject/edge: %+v", got[0])
+	}
 }
 
 func TestStatusJSONEmpty(t *testing.T) {
