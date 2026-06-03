@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
+	"github.com/CarriedWorldUniverse/cw/internal/identity"
 	casket "github.com/CarriedWorldUniverse/casket-go"
 )
 
@@ -116,5 +117,67 @@ func TestCreateRequiresSeed(t *testing.T) {
 	}
 	if called {
 		t.Fatal("create must not hit the server without CW_OWNER_SEED")
+	}
+}
+
+func TestPubkey(t *testing.T) {
+	t.Setenv("CW_OWNER_SEED", "cw-pubkey-test-seed")
+	gf := &cmdutil.GlobalFlags{}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"pubkey", "--slug", "builder"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("pubkey: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "YK99cMH64LflXEUjEHD38AMCrOStGKPE8uyj0GP28wI=") {
+		t.Fatalf("missing pubkey:\n%s", s)
+	}
+	if !strings.Contains(s, "vhkj2Fplk7uTkGzGSKDEJQ") {
+		t.Fatalf("missing fingerprint:\n%s", s)
+	}
+}
+
+func TestPubkeyJSON(t *testing.T) {
+	t.Setenv("CW_OWNER_SEED", "cw-pubkey-test-seed")
+	gf := &cmdutil.GlobalFlags{JSON: true}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"pubkey", "--slug", "builder"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("pubkey --json: %v", err)
+	}
+	var got struct{ Slug, Pubkey, Fingerprint string }
+	if err := json.NewDecoder(&out).Decode(&got); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out.String())
+	}
+	if got.Slug != "builder" || got.Fingerprint != "vhkj2Fplk7uTkGzGSKDEJQ" ||
+		got.Pubkey != "YK99cMH64LflXEUjEHD38AMCrOStGKPE8uyj0GP28wI=" {
+		t.Fatalf("json: %+v", got)
+	}
+	// Cross-check against a direct derivation.
+	_, pub, _ := casket.DeriveAgentKey([]byte("cw-pubkey-test-seed"), "builder")
+	if got.Fingerprint != identity.Fingerprint(pub) {
+		t.Fatalf("fingerprint mismatch vs identity.Fingerprint")
+	}
+}
+
+func TestPubkeyRequiresSeed(t *testing.T) {
+	t.Setenv("CW_OWNER_SEED", "")
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
+	cmd.SetArgs([]string{"pubkey", "--slug", "builder"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected missing-seed error")
+	}
+}
+
+func TestPubkeyRequiresSlug(t *testing.T) {
+	t.Setenv("CW_OWNER_SEED", "cw-pubkey-test-seed")
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
+	cmd.SetArgs([]string{"pubkey"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected missing-slug error")
 	}
 }
