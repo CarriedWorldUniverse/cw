@@ -51,7 +51,7 @@ A bare `<slug>` uses your context's org; `<org>/<slug>` or `--org` targets anoth
 
     git -c http.extraHeader="Authorization: Bearer $(cw auth token)" push
 
-The herald admin command group (`org`) builds on this core and ships separately.
+The herald admin command groups (`org`, `human`, `agent`) build on this core; see below.
 
 ## Issues (ledger)
 
