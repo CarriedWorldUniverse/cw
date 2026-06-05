@@ -14,6 +14,7 @@ import (
 	org "github.com/CarriedWorldUniverse/cw/internal/cli/org"
 	pr "github.com/CarriedWorldUniverse/cw/internal/cli/pr"
 	repo "github.com/CarriedWorldUniverse/cw/internal/cli/repo"
+	setupgit "github.com/CarriedWorldUniverse/cw/internal/cli/setupgit"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +52,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(human.NewCmd(flags))
 	root.AddCommand(agent.NewCmd(flags))
 	root.AddCommand(credential.NewCmd(flags))
+	root.AddCommand(setupgit.NewCmd(flags))
 	root.AddCommand(auth.NewWhoamiCmd(flags))
 	return root
 }

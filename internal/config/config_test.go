@@ -19,6 +19,7 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	}
 
 	c.Upsert("dev", Context{Edge: "http://edge:8080", Identity: Identity{Kind: "human", Subject: "u1", Display: "a@x"}})
+	c.Git.PrimaryHost = "cairn"
 	c.CurrentContext = "dev"
 	if err := c.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -31,6 +32,9 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	cur, ok := got.Current()
 	if !ok || cur.Edge != "http://edge:8080" || cur.Identity.Subject != "u1" {
 		t.Fatalf("round-trip mismatch: %+v", got)
+	}
+	if got.Git.PrimaryHost != "cairn" {
+		t.Fatalf("git primary host = %q", got.Git.PrimaryHost)
 	}
 	if filepath.Dir(path()) != dir {
 		t.Fatalf("path() = %q, want under %q", path(), dir)
