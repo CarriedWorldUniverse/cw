@@ -5,6 +5,7 @@
 package credential
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
@@ -14,7 +15,25 @@ import (
 // NewCmd builds the `cw credential` command group.
 func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{Use: "credential", Short: "Custodian-brokered credentials"}
-	cmd.AddCommand(newGitHelperCmd(gf))
+	cmd.AddCommand(newGitHelperCmd(gf), newIssueGitPermissionCmd(gf))
+	return cmd
+}
+
+func newIssueGitPermissionCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+	var name, aspect string
+	cmd := &cobra.Command{
+		Use:   "issue-git-permission",
+		Short: "Grant a worker identity scoped access to a git credential (admin)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if name == "" || aspect == "" {
+				return fmt.Errorf("--name and --aspect are required")
+			}
+			return postGitGrant(gf, name, aspect)
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&name, "name", "", "git credential name (required)")
+	f.StringVar(&aspect, "aspect", "", "worker identity to grant (required)")
 	return cmd
 }
 
