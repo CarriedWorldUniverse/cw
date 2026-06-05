@@ -34,6 +34,12 @@ type Context struct {
 type Config struct {
 	CurrentContext string             `yaml:"current-context"`
 	Contexts       map[string]Context `yaml:"contexts"`
+	Git            Git                `yaml:"git,omitempty"`
+}
+
+// Git holds git-specific cw settings.
+type Git struct {
+	PrimaryHost string `yaml:"primary-host,omitempty"`
 }
 
 // Dir returns cw's config directory, honouring CW_CONFIG_DIR, then
