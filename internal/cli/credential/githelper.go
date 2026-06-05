@@ -65,7 +65,7 @@ func seamFetchGit(gf *cmdutil.GlobalFlags, host string) (string, string, error) 
 	if gf.Token == "" {
 		return "", "", fmt.Errorf("git-helper: no session token (set --token / CW_TOKEN)")
 	}
-	body, _ := json.Marshal(map[string]string{"kind": "git"})
+	body, _ := json.Marshal(map[string]string{"kind": "git", "host": host})
 	req, err := http.NewRequest("POST", seamURL+"/api/agent/credential.fetch", bytes.NewReader(body))
 	if err != nil {
 		return "", "", err
