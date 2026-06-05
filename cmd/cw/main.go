@@ -6,6 +6,7 @@ import (
 	"os"
 
 	agent "github.com/CarriedWorldUniverse/cw/internal/cli/agent"
+	api "github.com/CarriedWorldUniverse/cw/internal/cli/api"
 	"github.com/CarriedWorldUniverse/cw/internal/cli/auth"
 	credential "github.com/CarriedWorldUniverse/cw/internal/cli/credential"
 	human "github.com/CarriedWorldUniverse/cw/internal/cli/human"
@@ -44,6 +45,7 @@ func newRootCmd() *cobra.Command {
 	p.StringVar(flagIdentity, "identity", os.Getenv("CW_IDENTITY"), "agent identity file (for --agent login)")
 	p.BoolVar(flagJSON, "json", false, "machine-readable JSON output")
 	root.AddCommand(auth.NewCmd(flags))
+	root.AddCommand(api.NewCmd(flags))
 	root.AddCommand(repo.NewCmd(flags))
 	root.AddCommand(pr.NewCmd(flags))
 	root.AddCommand(issue.NewCmd(flags))

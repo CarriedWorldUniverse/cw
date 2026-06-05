@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
+	"gopkg.in/yaml.v3"
 )
 
 // fetchFunc retrieves the git credential for a host from the custodian seam.
@@ -57,20 +58,21 @@ func runGitHelper(op string, in io.Reader, out io.Writer, fetch fetchFunc) error
 // environment, shell, or repo config. The broker session JWT is supplied
 // via the global --token (CW_TOKEN); the seam base URL via CW_SEAM_URL.
 // Both are provided by the worker runtime (M2 / NEX-436).
-func seamFetchGit(gf *cmdutil.GlobalFlags, host string) (string, string, error) {
+func SeamFetchGit(gf *cmdutil.GlobalFlags, host string) (string, string, error) {
 	seamURL := strings.TrimRight(os.Getenv("CW_SEAM_URL"), "/")
 	if seamURL == "" {
 		return "", "", fmt.Errorf("git-helper: CW_SEAM_URL not set")
 	}
-	if gf.Token == "" {
-		return "", "", fmt.Errorf("git-helper: no session token (set --token / CW_TOKEN)")
+	token, err := seamToken(gf)
+	if err != nil {
+		return "", "", err
 	}
 	body, _ := json.Marshal(map[string]string{"kind": "git", "host": host})
 	req, err := http.NewRequest("POST", seamURL+"/api/agent/credential.fetch", bytes.NewReader(body))
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+gf.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {
@@ -90,4 +92,49 @@ func seamFetchGit(gf *cmdutil.GlobalFlags, host string) (string, string, error) 
 		return "", "", err
 	}
 	return out.Bundle.Username, out.Bundle.Password, nil
+}
+
+func seamFetchGit(gf *cmdutil.GlobalFlags, host string) (string, string, error) {
+	return SeamFetchGit(gf, host)
+}
+
+func seamToken(gf *cmdutil.GlobalFlags) (string, error) {
+	if gf.Token != "" {
+		return gf.Token, nil
+	}
+	if gf.Identity != "" {
+		tok, err := tokenFromIdentityFile(gf.Identity)
+		if err != nil {
+			return "", err
+		}
+		if tok != "" {
+			return tok, nil
+		}
+	}
+	return "", fmt.Errorf("git-helper: no session token (set --token / CW_TOKEN)")
+}
+
+func tokenFromIdentityFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("git-helper: read identity file: %w", err)
+	}
+	var raw map[string]any
+	if strings.HasSuffix(strings.ToLower(path), ".json") {
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return "", fmt.Errorf("git-helper: parse identity file: %w", err)
+		}
+	} else if err := yaml.Unmarshal(b, &raw); err != nil {
+		return "", fmt.Errorf("git-helper: parse identity file: %w", err)
+	}
+	return firstString(raw, "token", "access_token", "session_token", "jwt", "bearer"), nil
+}
+
+func firstString(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if s, _ := m[key].(string); s != "" {
+			return s
+		}
+	}
+	return ""
 }
