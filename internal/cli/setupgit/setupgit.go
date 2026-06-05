@@ -24,7 +24,7 @@ const (
 	cairnHelperStub    = "!f() { echo \"TODO: cairn agent-git auth not yet supported\" >&2; exit 1; }; f"
 )
 
-type hostSpec struct {
+type HostSpec struct {
 	Name          string
 	CredentialID  string
 	Helper        string
@@ -63,7 +63,7 @@ func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 }
 
 func runSetupGit(cmd *cobra.Command, gf *cmdutil.GlobalFlags, hostArg string, write gitConfigWriter) error {
-	spec, err := resolveHost(hostArg)
+	spec, err := ResolveHost(hostArg)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func runSetupGit(cmd *cobra.Command, gf *cmdutil.GlobalFlags, hostArg string, wr
 	return nil
 }
 
-func resolveHost(arg string) (hostSpec, error) {
+func ResolveHost(arg string) (HostSpec, error) {
 	host := strings.TrimSpace(strings.ToLower(arg))
 	if host == "" {
 		host = strings.TrimSpace(strings.ToLower(os.Getenv("CW_PRIMARY_GIT_HOST")))
@@ -96,7 +96,7 @@ func resolveHost(arg string) (hostSpec, error) {
 	if host == "" {
 		cfg, err := config.Load()
 		if err != nil {
-			return hostSpec{}, err
+			return HostSpec{}, err
 		}
 		host = strings.TrimSpace(strings.ToLower(cfg.Git.PrimaryHost))
 	}
@@ -105,18 +105,20 @@ func resolveHost(arg string) (hostSpec, error) {
 	}
 	switch host {
 	case "github":
-		return hostSpec{Name: "github", CredentialID: "github.com", Helper: githubHelper}, nil
+		return HostSpec{Name: "github", CredentialID: "github.com", Helper: githubHelper}, nil
 	case "cairn":
-		return hostSpec{
+		return HostSpec{
 			Name:          "cairn",
 			CredentialID:  "cairn",
 			Helper:        cairnHelperStub,
 			HelperMessage: "TODO: cairn agent-git auth not yet supported",
 		}, nil
 	default:
-		return hostSpec{}, fmt.Errorf("setup-git: host must be one of github, cairn")
+		return HostSpec{}, fmt.Errorf("setup-git: host must be one of github, cairn")
 	}
 }
+
+func resolveHost(arg string) (HostSpec, error) { return ResolveHost(arg) }
 
 func resolveAgentName(gf *cmdutil.GlobalFlags) (string, error) {
 	if gf.Identity != "" {
