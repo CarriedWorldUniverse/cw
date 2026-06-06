@@ -3,7 +3,9 @@
 package setupgit
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/CarriedWorldUniverse/cw/internal/cli/credential"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/config"
 )
@@ -32,6 +35,9 @@ type HostSpec struct {
 }
 
 type gitConfigWriter func(key, value string) error
+type gitCredentialFetcher func(gf *cmdutil.GlobalFlags, host string) (username, password string, err error)
+type executableLooker func(file string) (string, error)
+type commandRunner func(name string, args []string, stdin string) error
 
 var defaultGitConfigWriter gitConfigWriter = func(key, value string) error {
 	git, err := exec.LookPath("git")
@@ -41,6 +47,21 @@ var defaultGitConfigWriter gitConfigWriter = func(key, value string) error {
 	cmd := exec.Command(git, "config", "--global", key, value)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git config --global %s: %w: %s", key, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+var defaultGitCredentialFetcher gitCredentialFetcher = credential.SeamFetchGit
+
+var defaultExecutableLooker executableLooker = exec.LookPath
+
+var defaultCommandRunner commandRunner = func(name string, args []string, stdin string) error {
+	c := exec.Command(name, args...)
+	if stdin != "" {
+		c.Stdin = bytes.NewBufferString(stdin)
+	}
+	if out, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -56,13 +77,13 @@ func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if len(args) == 1 {
 				host = args[0]
 			}
-			return runSetupGit(cmd, gf, host, defaultGitConfigWriter)
+			return runSetupGit(cmd, gf, host, defaultGitConfigWriter, defaultGitCredentialFetcher, defaultExecutableLooker, defaultCommandRunner)
 		},
 	}
 	return cmd
 }
 
-func runSetupGit(cmd *cobra.Command, gf *cmdutil.GlobalFlags, hostArg string, write gitConfigWriter) error {
+func runSetupGit(cmd *cobra.Command, gf *cmdutil.GlobalFlags, hostArg string, write gitConfigWriter, fetch gitCredentialFetcher, lookPath executableLooker, run commandRunner) error {
 	spec, err := ResolveHost(hostArg)
 	if err != nil {
 		return err
@@ -84,6 +105,33 @@ func runSetupGit(cmd *cobra.Command, gf *cmdutil.GlobalFlags, hostArg string, wr
 	fmt.Fprintf(cmd.ErrOrStderr(), "Configured git for %s as %s\n", spec.Name, agent)
 	if spec.HelperMessage != "" {
 		fmt.Fprintln(cmd.ErrOrStderr(), spec.HelperMessage)
+	}
+	if spec.Name == "github" {
+		if err := setupGHAuth(cmd, gf, spec, fetch, lookPath, run); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setupGHAuth(cmd *cobra.Command, gf *cmdutil.GlobalFlags, spec HostSpec, fetch gitCredentialFetcher, lookPath executableLooker, run commandRunner) error {
+	gh, err := lookPath("gh")
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Warning: gh CLI not found; skipping gh authentication")
+			return nil
+		}
+		return fmt.Errorf("setup-git: find gh CLI: %w", err)
+	}
+	_, token, err := fetch(gf, spec.CredentialID)
+	if err != nil {
+		return fmt.Errorf("setup-git: fetch github credential for gh: %w", err)
+	}
+	if err := run(gh, []string{"auth", "login", "--with-token"}, token); err != nil {
+		return fmt.Errorf("setup-git: configure gh auth: %w", err)
+	}
+	if err := run(gh, []string{"auth", "setup-git"}, ""); err != nil {
+		return fmt.Errorf("setup-git: configure gh git auth: %w", err)
 	}
 	return nil
 }
