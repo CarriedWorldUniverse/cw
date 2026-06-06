@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	casket "github.com/CarriedWorldUniverse/casket-go"
@@ -65,8 +66,11 @@ func TestEnrollAttachWritesKeyfile(t *testing.T) {
 	if kf.Key != base64.StdEncoding.EncodeToString(priv) {
 		t.Fatalf("key mismatch")
 	}
-	if info, _ := os.Stat(out); info.Mode().Perm() != 0o600 {
-		t.Errorf("perms = %v, want 0600", info.Mode().Perm())
+	// Windows does not honor Unix perm bits; the 0600 guarantee is Unix-only.
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(out); info.Mode().Perm() != 0o600 {
+			t.Errorf("perms = %v, want 0600", info.Mode().Perm())
+		}
 	}
 }
 
