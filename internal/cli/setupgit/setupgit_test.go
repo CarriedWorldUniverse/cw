@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -65,7 +66,7 @@ func TestSetupGitGithubWritesHelperAndIdentity(t *testing.T) {
 	t.Setenv("CW_PRIMARY_GIT_HOST", "")
 	saveContext(t, "builder")
 
-	got, err := captureSetupGit(&cmdutil.GlobalFlags{}, "github")
+	got, _, err := captureSetupGit(&cmdutil.GlobalFlags{}, "github")
 	if err != nil {
 		t.Fatalf("setup-git github: %v", err)
 	}
@@ -80,12 +81,96 @@ func TestSetupGitGithubWritesHelperAndIdentity(t *testing.T) {
 	}
 }
 
+func TestSetupGitGithubAuthenticatesGHWithFetchedToken(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	t.Setenv("CW_PRIMARY_GIT_HOST", "")
+	saveContext(t, "builder")
+
+	cmd := &cobra.Command{Use: "setup-git"}
+	var fetchedHost string
+	var calls []ghCall
+	writes := map[string]string{}
+	err := runSetupGit(cmd, &cmdutil.GlobalFlags{}, "github",
+		func(key, value string) error {
+			writes[key] = value
+			return nil
+		},
+		func(_ *cmdutil.GlobalFlags, host string) (string, string, error) {
+			fetchedHost = host
+			return "x-access-token", "gh-token", nil
+		},
+		func(file string) (string, error) {
+			if file != "gh" {
+				t.Fatalf("looked up executable = %q, want gh", file)
+			}
+			return "/bin/gh", nil
+		},
+		func(name string, args []string, stdin string) error {
+			calls = append(calls, ghCall{name: name, args: append([]string(nil), args...), stdin: stdin})
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("setup-git github: %v", err)
+	}
+	if fetchedHost != "github.com" {
+		t.Fatalf("fetched host = %q, want github.com", fetchedHost)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("gh calls = %#v, want 2 calls", calls)
+	}
+	if calls[0].name != "/bin/gh" || strings.Join(calls[0].args, " ") != "auth login --with-token" || calls[0].stdin != "gh-token" {
+		t.Fatalf("gh login call = %#v", calls[0])
+	}
+	if calls[1].name != "/bin/gh" || strings.Join(calls[1].args, " ") != "auth setup-git" || calls[1].stdin != "" {
+		t.Fatalf("gh setup-git call = %#v", calls[1])
+	}
+	if writes["credential.helper"] != githubHelper {
+		t.Fatalf("git config not preserved: %v", writes)
+	}
+}
+
+func TestSetupGitGithubSkipsGHWhenMissing(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	t.Setenv("CW_PRIMARY_GIT_HOST", "")
+	saveContext(t, "builder")
+
+	cmd := &cobra.Command{Use: "setup-git"}
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+	fetchCalled := false
+	err := runSetupGit(cmd, &cmdutil.GlobalFlags{}, "github",
+		func(string, string) error { return nil },
+		func(_ *cmdutil.GlobalFlags, host string) (string, string, error) {
+			fetchCalled = true
+			if host != "github.com" {
+				t.Fatalf("fetched host = %q, want github.com", host)
+			}
+			return "x-access-token", "gh-token", nil
+		},
+		func(string) (string, error) { return "", exec.ErrNotFound },
+		func(string, []string, string) error {
+			t.Fatal("gh runner should not be called when gh is missing")
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("setup-git github with missing gh: %v", err)
+	}
+	if fetchCalled {
+		t.Fatal("fetched github credential when gh was missing")
+	}
+	if !strings.Contains(errOut.String(), "gh CLI not found") {
+		t.Fatalf("missing warning: %q", errOut.String())
+	}
+}
+
 func TestSetupGitCairnWritesIdentityAndStub(t *testing.T) {
 	t.Setenv("CW_CONFIG_DIR", t.TempDir())
 	t.Setenv("CW_PRIMARY_GIT_HOST", "")
 	saveContext(t, "builder")
 
-	got, err := captureSetupGit(&cmdutil.GlobalFlags{}, "cairn")
+	got, ghTokens, err := captureSetupGit(&cmdutil.GlobalFlags{}, "cairn")
 	if err != nil {
 		t.Fatalf("setup-git cairn: %v", err)
 	}
@@ -94,6 +179,9 @@ func TestSetupGitCairnWritesIdentityAndStub(t *testing.T) {
 	}
 	if !strings.Contains(got["credential.helper"], "cairn agent-git auth not yet supported") {
 		t.Fatalf("cairn helper missing stub note: %q", got["credential.helper"])
+	}
+	if len(ghTokens) != 0 {
+		t.Fatalf("cairn touched gh: %v", ghTokens)
 	}
 }
 
@@ -111,7 +199,7 @@ func TestSetupGitBareUsesPrimary(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	got, err := captureSetupGit(&cmdutil.GlobalFlags{}, "")
+	got, _, err := captureSetupGit(&cmdutil.GlobalFlags{}, "")
 	if err != nil {
 		t.Fatalf("setup-git default: %v", err)
 	}
@@ -125,7 +213,7 @@ func TestSetupGitIdentityFromToken(t *testing.T) {
 	t.Setenv("CW_PRIMARY_GIT_HOST", "")
 	token := "x." + b64(`{"sub":"a1","kind":"agent","slug":"token-builder"}`) + ".y"
 
-	got, err := captureSetupGit(&cmdutil.GlobalFlags{Token: token}, "github")
+	got, _, err := captureSetupGit(&cmdutil.GlobalFlags{Token: token}, "github")
 	if err != nil {
 		t.Fatalf("setup-git token identity: %v", err)
 	}
@@ -142,7 +230,7 @@ func TestSetupGitIdentityFromFile(t *testing.T) {
 		t.Fatalf("write identity: %v", err)
 	}
 
-	got, err := captureSetupGit(&cmdutil.GlobalFlags{Identity: path}, "github")
+	got, _, err := captureSetupGit(&cmdutil.GlobalFlags{Identity: path}, "github")
 	if err != nil {
 		t.Fatalf("setup-git file identity: %v", err)
 	}
@@ -151,16 +239,32 @@ func TestSetupGitIdentityFromFile(t *testing.T) {
 	}
 }
 
-func captureSetupGit(gf *cmdutil.GlobalFlags, host string) (map[string]string, error) {
+func captureSetupGit(gf *cmdutil.GlobalFlags, host string) (map[string]string, []string, error) {
 	cmd := &cobra.Command{Use: "setup-git"}
 	var errOut bytes.Buffer
 	cmd.SetErr(&errOut)
 	writes := map[string]string{}
+	var ghTokens []string
 	err := runSetupGit(cmd, gf, host, func(key, value string) error {
 		writes[key] = value
 		return nil
+	}, func(_ *cmdutil.GlobalFlags, host string) (string, string, error) {
+		return "x-access-token", "token-for-" + host, nil
+	}, func(string) (string, error) {
+		return "/bin/gh", nil
+	}, func(_ string, args []string, stdin string) error {
+		if strings.Join(args, " ") == "auth login --with-token" {
+			ghTokens = append(ghTokens, stdin)
+		}
+		return nil
 	})
-	return writes, err
+	return writes, ghTokens, err
+}
+
+type ghCall struct {
+	name  string
+	args  []string
+	stdin string
 }
 
 func saveContext(t *testing.T, slug string) {
