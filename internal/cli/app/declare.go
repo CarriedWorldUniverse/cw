@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	cwbv1 "github.com/CarriedWorldUniverse/cwb-proto/gen/go/cwb/v1"
+	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
 
-func newDeclare() *cobra.Command {
+func newDeclare(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "declare <file.yaml>",
 		Short: "Write an app declaration to almanac (mason reconciles it)",
@@ -25,18 +25,14 @@ func newDeclare() *cobra.Command {
 			if err := precheck(name, y); err != nil {
 				return err
 			}
-			conn, err := dial(envOr("CW_APP_ALMANAC_ADDR", "almanac.cwb.svc.cluster.local:8083"))
+			a, err := newAPI(gf)
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
-			_, err = cwbv1.NewConfigServiceClient(conn).SetConfig(
-				mdCtx(cmd.Context(), "config:write"),
-				&cwbv1.SetConfigRequest{Path: declPath(name), Value: string(y)})
-			if err != nil {
+			if err := a.declare(cmd.Context(), name, string(y)); err != nil {
 				return err
 			}
-			fmt.Printf("declared %s -> %s (mason reconciles within its poll interval; `cw app sync %s` to force)\n", name, declPath(name), name)
+			fmt.Fprintf(cmd.OutOrStdout(), "declared %s -> %s (mason reconciles within its poll interval; `cw app sync %s` to force)\n", name, declPath(name), name)
 			return nil
 		},
 	}

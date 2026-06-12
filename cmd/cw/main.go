@@ -47,7 +47,7 @@ func newRootCmd() *cobra.Command {
 	p.BoolVar(flagJSON, "json", false, "machine-readable JSON output")
 	root.AddCommand(auth.NewCmd(flags))
 	root.AddCommand(api.NewCmd(flags))
-	root.AddCommand(app.New())
+	root.AddCommand(app.New(flags))
 	root.AddCommand(repo.NewCmd(flags))
 	root.AddCommand(pr.NewCmd(flags))
 	root.AddCommand(issue.NewCmd(flags))

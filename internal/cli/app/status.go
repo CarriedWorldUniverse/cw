@@ -3,31 +3,30 @@ package app
 import (
 	"fmt"
 
-	cwbv1 "github.com/CarriedWorldUniverse/cwb-proto/gen/go/cwb/v1"
+	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
 
-func newStatus() *cobra.Command {
+func newStatus(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status <name>",
 		Short: "Show one app's reconcile state and declaration (mason)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, closeConn, err := masonClient()
+			a, err := newAPI(gf)
 			if err != nil {
 				return err
 			}
-			defer closeConn()
-			resp, err := client.GetApp(mdCtx(cmd.Context(), "app:read"), &cwbv1.GetAppRequest{Name: args[0]})
+			app, decl, err := a.getApp(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			a := resp.GetApp()
-			fmt.Printf("name:         %s\nnamespace:    %s\nphase:        %s\nready:        %s\nmessage:      %s\ndecl hash:    %s\napplied hash: %s\nlast applied: %s\nlast checked: %s\n",
-				a.GetName(), a.GetNamespace(), phaseString(a.GetPhase()), a.GetReady(), a.GetMessage(),
-				a.GetDeclHash(), a.GetAppliedHash(), a.GetLastAppliedAt(), a.GetLastCheckedAt())
-			fmt.Println("--- declaration ---")
-			fmt.Print(resp.GetDeclaration())
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "name:         %s\nnamespace:    %s\nphase:        %s\nready:        %s\nmessage:      %s\ndecl hash:    %s\napplied hash: %s\nlast applied: %s\nlast checked: %s\n",
+				app.Name, app.Namespace, phaseDisplay(app.Phase), app.Ready, app.Message,
+				app.DeclHash, app.AppliedHash, app.LastApplied, app.LastChecked)
+			fmt.Fprintln(out, "--- declaration ---")
+			fmt.Fprint(out, decl)
 			return nil
 		},
 	}
