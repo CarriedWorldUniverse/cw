@@ -68,7 +68,7 @@ func mdCtx(ctx context.Context, scopes string) context.Context {
 		"cwb-scopes", scopes)
 }
 
-func declPath(name string) string { return envOr("CW_APP_PREFIX", "/cwb/mason/apps/") + name }
+func declPath(name string) string { return envOr("CW_APP_PREFIX", "cwb/mason/apps/") + name }
 
 func precheck(name string, y []byte) error {
 	var d struct {
