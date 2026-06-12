@@ -1,34 +1,88 @@
 // Package app is the cw command group for Strata app declarations: declare/rm
-// write almanac (/cwb/mason/apps/<name>); ls/status/sync read mason.
+// write almanac (cwb/mason/apps/<name>); ls/status/sync read mason.
 //
-// M1 transport is direct in-cluster mTLS (CW_APP_* env); the interchange edge
-// path arrives with NEX-621.
+// Default transport is the interchange edge (REST + session bearer, like every
+// other cw group). Setting CW_APP_TLS_CERT opts into the direct in-mesh gRPC
+// transport (break-glass; see grpc.go).
 package app
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"os"
 
+	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
-func New() *cobra.Command {
+func New(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "app",
 		Short: "Declare and inspect Strata apps (mason)",
-		Long: "Declarations are written to almanac (/cwb/mason/apps/<name>); mason reconciles\n" +
-			"them onto the cluster. M1 transport is direct in-cluster mTLS via CW_APP_* env;\n" +
-			"the interchange edge path arrives with NEX-621.",
+		Long: "Declarations are written to almanac (cwb/mason/apps/<name>); mason reconciles\n" +
+			"them onto the cluster. Commands go through the interchange edge with the\n" +
+			"session bearer (same auth as the rest of cw). Setting CW_APP_TLS_CERT/_KEY/_CA\n" +
+			"switches to the direct in-mesh mTLS transport (break-glass when the edge is\n" +
+			"down; needs CW_APP_MASON_ADDR/CW_APP_ALMANAC_ADDR reachability).",
 	}
-	cmd.AddCommand(newDeclare(), newLs(), newStatus(), newRm(), newSync())
+	cmd.AddCommand(newDeclare(gf), newLs(gf), newStatus(gf), newRm(gf), newSync(gf))
 	return cmd
+}
+
+// appStatus is one app's reconcile state, in the gateway's snake_case JSON
+// shape (UseProtoNames; phase arrives as the enum name, e.g. APP_PHASE_SYNCED).
+type appStatus struct {
+	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
+	Phase       string `json:"phase"`
+	Message     string `json:"message"`
+	Ready       string `json:"ready"`
+	DeclHash    string `json:"decl_hash"`
+	AppliedHash string `json:"applied_hash"`
+	LastApplied string `json:"last_applied_at"`
+	LastChecked string `json:"last_checked_at"`
+}
+
+// appAPI is the transport seam: edgeAPI (default) or grpcAPI (CW_APP_TLS_CERT).
+type appAPI interface {
+	listApps(ctx context.Context) ([]appStatus, error)
+	getApp(ctx context.Context, name string) (appStatus, string, error)
+	triggerSync(ctx context.Context, name string) ([]appStatus, error)
+	declare(ctx context.Context, name, yaml string) error
+	remove(ctx context.Context, name string) error
+}
+
+// newAPI selects the transport: CW_APP_TLS_CERT set → direct in-mesh gRPC;
+// otherwise the interchange edge with the session bearer.
+func newAPI(gf *cmdutil.GlobalFlags) (appAPI, error) {
+	if os.Getenv("CW_APP_TLS_CERT") != "" {
+		return grpcAPI{}, nil
+	}
+	c, _, _, err := cmdutil.Session(gf)
+	if err != nil {
+		return nil, err
+	}
+	return edgeAPI{c: c}, nil
+}
+
+// phaseDisplay maps an AppPhase enum name to its display form; unrecognized
+// names pass through verbatim so new phases stay visible.
+func phaseDisplay(p string) string {
+	switch p {
+	case "APP_PHASE_SYNCED":
+		return "Synced"
+	case "APP_PHASE_PROGRESSING":
+		return "Progressing"
+	case "APP_PHASE_DEGRADED":
+		return "Degraded"
+	case "APP_PHASE_INVALID":
+		return "Invalid"
+	case "APP_PHASE_UNKNOWN", "APP_PHASE_UNSPECIFIED", "":
+		return "Unknown"
+	default:
+		return p
+	}
 }
 
 func envOr(k, d string) string {
@@ -36,36 +90,6 @@ func envOr(k, d string) string {
 		return v
 	}
 	return d
-}
-
-func dial(addr string) (*grpc.ClientConn, error) {
-	certPath := os.Getenv("CW_APP_TLS_CERT")
-	keyPath := os.Getenv("CW_APP_TLS_KEY")
-	caPath := os.Getenv("CW_APP_TLS_CA")
-	if certPath == "" || keyPath == "" || caPath == "" {
-		return nil, fmt.Errorf("cw app needs CW_APP_TLS_CERT/_KEY/_CA (cwb-ca client cert; M1 in-cluster transport)")
-	}
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("CW_APP_TLS_CERT/_KEY: %w", err)
-	}
-	caPEM, err := os.ReadFile(caPath)
-	if err != nil {
-		return nil, fmt.Errorf("CW_APP_TLS_CA: %w", err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(caPEM) {
-		return nil, fmt.Errorf("CW_APP_TLS_CA: no certs parsed")
-	}
-	return grpc.NewClient(addr, grpc.WithTransportCredentials(
-		credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: pool, MinVersion: tls.VersionTLS13})))
-}
-
-func mdCtx(ctx context.Context, scopes string) context.Context {
-	return metadata.AppendToOutgoingContext(ctx,
-		"cwb-subject", envOr("CW_APP_SUBJECT", "croft"),
-		"cwb-org", envOr("CW_APP_ORG", "carriedworld"),
-		"cwb-scopes", scopes)
 }
 
 func declPath(name string) string { return envOr("CW_APP_PREFIX", "cwb/mason/apps/") + name }
