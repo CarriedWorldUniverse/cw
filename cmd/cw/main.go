@@ -9,6 +9,7 @@ import (
 	api "github.com/CarriedWorldUniverse/cw/internal/cli/api"
 	app "github.com/CarriedWorldUniverse/cw/internal/cli/app"
 	"github.com/CarriedWorldUniverse/cw/internal/cli/auth"
+	cred "github.com/CarriedWorldUniverse/cw/internal/cli/cred"
 	credential "github.com/CarriedWorldUniverse/cw/internal/cli/credential"
 	human "github.com/CarriedWorldUniverse/cw/internal/cli/human"
 	issue "github.com/CarriedWorldUniverse/cw/internal/cli/issue"
@@ -55,6 +56,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(org.NewCmd(flags))
 	root.AddCommand(human.NewCmd(flags))
 	root.AddCommand(agent.NewCmd(flags))
+	root.AddCommand(cred.NewCmd(flags))
 	root.AddCommand(credential.NewCmd(flags))
 	root.AddCommand(setupgit.NewCmd(flags))
 	root.AddCommand(auth.NewWhoamiCmd(flags))
