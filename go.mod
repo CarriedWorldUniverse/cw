@@ -3,7 +3,7 @@ module github.com/CarriedWorldUniverse/cw
 go 1.26.3
 
 require (
-	github.com/CarriedWorldUniverse/casket-go v0.1.0
+	github.com/CarriedWorldUniverse/casket-go v0.1.1-0.20260612051152-0558c0b699d3
 	github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260610200006-8b32e4554f43
 	github.com/CarriedWorldUniverse/cwb-proto v0.0.0-20260611230350-bdfe3afce2e3
 	github.com/spf13/cobra v1.10.2
