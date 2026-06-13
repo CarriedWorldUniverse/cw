@@ -2,13 +2,19 @@
 package cred
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/CarriedWorldUniverse/cwb-client/client"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/config"
@@ -28,16 +34,16 @@ type Store interface {
 	List() ([]string, error)
 }
 
-func NewCmd(_ *cmdutil.GlobalFlags) *cobra.Command {
+func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cred",
 		Short: "Get, put, and list explicitly namespaced credentials",
 	}
-	cmd.AddCommand(newGetCmd(), newPutCmd(), newListCmd())
+	cmd.AddCommand(newGetCmd(gf), newPutCmd(), newListCmd())
 	return cmd
 }
 
-func newGetCmd() *cobra.Command {
+func newGetCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <namespace>/<name>",
 		Short: "Print a credential secret to stdout",
@@ -48,7 +54,16 @@ func newGetCmd() *cobra.Command {
 				return err
 			}
 			if route.remote {
-				return remoteNotImplemented(route.namespace)
+				c, _, _, err := cmdutil.Session(gf)
+				if err != nil {
+					return err
+				}
+				secret, err := getRemoteSecret(cmd.Context(), c, route.namespace, route.name)
+				if err != nil {
+					return err
+				}
+				_, err = cmd.OutOrStdout().Write([]byte(secret))
+				return err
 			}
 			passphrase, err := promptPassphrase("Satchel passphrase")
 			if err != nil {
@@ -174,6 +189,57 @@ func validateSecretName(name string) error {
 
 func remoteNotImplemented(namespace string) error {
 	return fmt.Errorf("cred: namespace %q is the remote custodian tier; remote tier not implemented yet (NEX-650)", namespace)
+}
+
+func getRemoteSecret(ctx context.Context, c client.Doer, org, name string) (string, error) {
+	ref := org + "/" + name
+	path := "/api/secret/" + url.PathEscape(org) + "/" + url.PathEscape(name)
+	resp, body, err := c.Do(ctx, http.MethodGet, "custodian", path, nil)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode/100 != 2 {
+		msg := responseError(body)
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return "", fmt.Errorf("cred: forbidden %s: caller lacks custodian:read for that org's secret: %s", ref, msg)
+		case http.StatusNotFound:
+			return "", fmt.Errorf("cred: no such secret %s", ref)
+		default:
+			return "", fmt.Errorf("cred: get %s: status %d: %s", ref, resp.StatusCode, msg)
+		}
+	}
+	var item struct {
+		Value string `json:"value"`
+		Item  struct {
+			Value string `json:"value"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal(body, &item); err != nil {
+		return "", fmt.Errorf("cred: get %s: decode response: %w", ref, err)
+	}
+	if item.Value != "" {
+		return item.Value, nil
+	}
+	return item.Item.Value, nil
+}
+
+func responseError(body []byte) string {
+	var e struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(body, &e)
+	switch {
+	case e.Error != "":
+		return e.Error
+	case e.Message != "":
+		return e.Message
+	case strings.TrimSpace(string(body)) != "":
+		return strings.TrimSpace(string(body))
+	default:
+		return "no response body"
+	}
 }
 
 func formatStoreError(op, ref string, err error) error {
