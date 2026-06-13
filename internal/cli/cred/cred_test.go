@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	casket "github.com/CarriedWorldUniverse/casket-go"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 )
 
@@ -53,8 +54,8 @@ func TestPersonalPutGetListRoundTrip(t *testing.T) {
 	if bytes.Contains(onDisk, []byte("secret-value")) {
 		t.Fatalf("stored envelope contains plaintext secret: %s", onDisk)
 	}
-	if !bytes.Contains(onDisk, []byte("casket.DeriveAgentKey")) {
-		t.Fatalf("stored envelope does not describe casket derivation: %s", onDisk)
+	if len(onDisk) == 0 || onDisk[0] != byte(casket.SuiteXChaCha20) {
+		t.Fatalf("stored envelope is not a default casket blob: %x", onDisk)
 	}
 }
 
@@ -69,6 +70,25 @@ func TestWrongPassphraseAndMissingNameAreDistinct(t *testing.T) {
 	}
 	if _, err := store.Get("missing", "right passphrase"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestStoredBlobIsBoundToSecretName(t *testing.T) {
+	dir := t.TempDir()
+	store := NewFileStore(dir)
+	if err := store.Put("api-token", []byte("secret-value"), "right passphrase"); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	blob, err := os.ReadFile(filepath.Join(dir, "api-token.casket.json"))
+	if err != nil {
+		t.Fatalf("read stored envelope: %v", err)
+	}
+	key, err := secretKey("right passphrase")
+	if err != nil {
+		t.Fatalf("derive key: %v", err)
+	}
+	if _, _, err := casket.Open(key, blob, []byte(repoIdentity), []byte("other-token")); err == nil {
+		t.Fatal("open with wrong object path succeeded")
 	}
 }
 
