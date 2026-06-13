@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
+	"github.com/CarriedWorldUniverse/cw/internal/config"
 )
 
 // TestHumanCreateWiring: create POSTs the right body, and --password-stdin
@@ -84,4 +85,167 @@ func TestReadSecret(t *testing.T) {
 	if _, err := readSecret(strings.NewReader("\n"), true, true); err == nil {
 		t.Fatal("empty stdin + required should error")
 	}
+}
+
+func TestHumanPasswordSetWiring(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	restorePrompt := stubConfirmedPassword(t, "new-password")
+	defer restorePrompt()
+
+	var gotAuth, gotBody string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/humans/h1/password", func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"password", "set", "--id", "h1"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+	if gotBody != `{"password":"new-password"}` {
+		t.Fatalf("password body = %s", gotBody)
+	}
+}
+
+func TestHumanPasswordSetUnauthorized(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	restorePrompt := stubConfirmedPassword(t, "new-password")
+	defer restorePrompt()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/humans/h1/password", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"bad token"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"password", "set", "--id", "h1"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("execute should fail")
+	}
+	if !strings.Contains(err.Error(), "unauthorized (401)") || !strings.Contains(err.Error(), "bad token") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestHumanPasswordSetMismatchAborts(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	restorePrompt := stubPasswordReads(t, "new-password", "other-password")
+	defer restorePrompt()
+
+	var hit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hit = true
+	}))
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"password", "set", "--id", "h1"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("execute should fail")
+	}
+	if !strings.Contains(err.Error(), "passwords do not match") {
+		t.Fatalf("error = %v", err)
+	}
+	if hit {
+		t.Fatal("server should not be called on mismatch")
+	}
+}
+
+func TestHumanPasswordSetRejectsShortPassword(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	restorePrompt := stubPasswordReads(t, "short")
+	defer restorePrompt()
+
+	var hit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hit = true
+	}))
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"password", "set", "--id", "h1"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("execute should fail")
+	}
+	if !strings.Contains(err.Error(), "at least 8 characters") {
+		t.Fatalf("error = %v", err)
+	}
+	if hit {
+		t.Fatal("server should not be called for a short password")
+	}
+}
+
+func TestHumanPasswordSetDefaultsIDToCallerSubject(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CW_CONFIG_DIR", dir)
+	if err := (&config.Config{
+		CurrentContext: "dev",
+		Contexts: map[string]config.Context{
+			"dev": {Edge: "http://unused", Identity: config.Identity{Kind: "human", Subject: "self-human", Display: "alice"}},
+		},
+	}).Save(); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	restorePrompt := stubConfirmedPassword(t, "new-password")
+	defer restorePrompt()
+
+	var gotPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /herald/api/humans/self-human/password", func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "not-a-jwt"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"password", "set"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if gotPath != "/herald/api/humans/self-human/password" {
+		t.Fatalf("path = %q", gotPath)
+	}
+}
+
+func stubConfirmedPassword(t *testing.T, password string) func() {
+	t.Helper()
+	return stubPasswordReads(t, password, password)
+}
+
+func stubPasswordReads(t *testing.T, values ...string) func() {
+	t.Helper()
+	old := promptConfirmedPassword
+	promptConfirmedPassword = func() (string, error) {
+		i := 0
+		return readConfirmedPassword(func(string) (string, error) {
+			if i >= len(values) {
+				t.Fatalf("prompt read %d exceeds stub values %d", i+1, len(values))
+			}
+			v := values[i]
+			i++
+			return v, nil
+		})
+	}
+	return func() { promptConfirmedPassword = old }
 }
