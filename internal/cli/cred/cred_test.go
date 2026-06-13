@@ -3,6 +3,8 @@ package cred
 import (
 	"bytes"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,15 +107,72 @@ func TestBareNameErrorShowsBothForms(t *testing.T) {
 	}
 }
 
-func TestRemoteNamespaceRecognizedButUnimplemented(t *testing.T) {
-	cmd := NewCmd(&cmdutil.GlobalFlags{})
-	cmd.SetArgs([]string{"get", "cwb/api-token"})
+func TestRemoteGetWiring(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+
+	var gotAuth string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /custodian/api/secret/cwb/meshy-api-key", func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"path":"cwb/meshy-api-key","value":"secret-value"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var out bytes.Buffer
+	cmd := NewCmd(&cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"})
+	cmd.SetArgs([]string{"get", "cwb/meshy-api-key"})
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if out.String() != "secret-value" {
+		t.Fatalf("secret = %q", out.String())
+	}
+	if gotAuth != "Bearer tok" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+}
+
+func TestRemoteGetForbidden(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /custodian/api/secret/cwb/meshy-api-key", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"scope denied"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cmd := NewCmd(&cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"})
+	cmd.SetArgs([]string{"get", "cwb/meshy-api-key"})
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("remote namespace should fail in NEX-649")
+		t.Fatal("get should fail")
 	}
-	if !strings.Contains(err.Error(), "remote tier not implemented yet (NEX-650)") {
-		t.Fatalf("remote error = %q", err.Error())
+	msg := err.Error()
+	if !strings.Contains(msg, "forbidden") || !strings.Contains(msg, "custodian:read") || !strings.Contains(msg, "scope denied") {
+		t.Fatalf("error = %q", msg)
+	}
+}
+
+func TestRemoteGetNotFound(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /custodian/api/secret/cwb/missing", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cmd := NewCmd(&cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"})
+	cmd.SetArgs([]string{"get", "cwb/missing"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no such secret cwb/missing") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
