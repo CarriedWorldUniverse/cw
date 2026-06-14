@@ -26,6 +26,9 @@ func TestOnboardWiring(t *testing.T) {
 		Products []string `json:"products"`
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/orgs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"orgs":[]}`)) // no existing org named acme
+	})
 	mux.HandleFunc("POST /herald/api/orgs", func(w http.ResponseWriter, r *http.Request) {
 		hits = append(hits, "create-org")
 		b, _ := io.ReadAll(r.Body)
@@ -84,6 +87,9 @@ func TestOnboardSetsPassword(t *testing.T) {
 	t.Setenv("CW_CONFIG_DIR", t.TempDir())
 	var hits []string
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/orgs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"orgs":[]}`))
+	})
 	mux.HandleFunc("POST /herald/api/orgs", func(w http.ResponseWriter, _ *http.Request) {
 		hits = append(hits, "create-org")
 		_, _ = w.Write([]byte(`{"id":"o1","name":"acme"}`))
@@ -115,6 +121,105 @@ func TestOnboardSetsPassword(t *testing.T) {
 	_ = json.Unmarshal([]byte(out.String()), &res)
 	if !res.PasswordSet {
 		t.Fatal("PasswordSet must be true")
+	}
+}
+
+// TestOnboardIdempotent: if an org with the name already exists, onboard reuses
+// it and provisions nothing new (no create-org, no create-human).
+func TestOnboardIdempotent(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	var created []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/orgs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"orgs":[{"id":"existing","name":"acme"}]}`))
+	})
+	mux.HandleFunc("POST /herald/api/orgs", func(http.ResponseWriter, *http.Request) { created = append(created, "org") })
+	mux.HandleFunc("POST /herald/api/orgs/existing/humans", func(http.ResponseWriter, *http.Request) { created = append(created, "human") })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok", JSON: true}
+	cmd := NewCmd(gf)
+	out := &strings.Builder{}
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"onboard", "acme", "--owner", "alice@acme.test"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("idempotent onboard must create nothing, created %v", created)
+	}
+	var res onboardResult
+	_ = json.Unmarshal([]byte(out.String()), &res)
+	if res.Org != "existing" || !res.AlreadyOnboarded {
+		t.Fatalf("must reuse existing org and flag AlreadyOnboarded, got %+v", res)
+	}
+}
+
+// TestOnboardAmbiguousName: more than one org with the name fails closed (never
+// guesses which tenant) and provisions nothing.
+func TestOnboardAmbiguousName(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	created := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /herald/api/orgs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"orgs":[{"id":"a","name":"acme"},{"id":"b","name":"acme"}]}`))
+	})
+	mux.HandleFunc("POST /herald/api/orgs", func(http.ResponseWriter, *http.Request) { created = true })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"onboard", "acme", "--owner", "alice@acme.test"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected ambiguous-name error")
+	}
+	if created {
+		t.Fatal("must not create on ambiguous name")
+	}
+}
+
+// TestOffboard: offboard deletes (purges) the org; herald cascades to pillars.
+func TestOffboard(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	deleted := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /herald/api/orgs/o1", func(w http.ResponseWriter, _ *http.Request) {
+		deleted = true
+		_, _ = w.Write([]byte(`{"deleted":"o1","pillars":["cairn","ledger","commonplace"]}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"offboard", "o1", "--confirm", "acme"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !deleted {
+		t.Fatal("offboard must call DeleteOrg")
+	}
+}
+
+// TestOffboardRequiresConfirm: offboard fails fast without --confirm.
+func TestOffboardRequiresConfirm(t *testing.T) {
+	t.Setenv("CW_CONFIG_DIR", t.TempDir())
+	called := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /herald/api/orgs/o1", func(http.ResponseWriter, *http.Request) { called = true })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
+	cmd := NewCmd(gf)
+	cmd.SetArgs([]string{"offboard", "o1"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected missing-confirm error")
+	}
+	if called {
+		t.Fatal("must not hit the server without --confirm")
 	}
 }
 
