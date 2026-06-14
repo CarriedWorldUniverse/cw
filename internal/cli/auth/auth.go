@@ -1,5 +1,5 @@
 // Package auth implements the `cw auth` command group: login, logout, whoami,
-// status, switch, token. It wires config + tokenstore + oidc + identity.
+// status, switch, token, idjag. It wires config + tokenstore + oidc + identity.
 //
 // Output convention (followed by all command groups): query commands (whoami,
 // status, token) write their result to STDOUT so it can be piped/parsed;
@@ -27,6 +27,7 @@ func NewCmd(gf *GlobalFlags) *cobra.Command {
 		newStatusCmd(gf),
 		newSwitchCmd(gf),
 		newTokenCmd(gf),
+		newIdJAGCmd(gf),
 	)
 	return cmd
 }
