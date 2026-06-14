@@ -4,10 +4,11 @@ go 1.26.3
 
 require (
 	github.com/CarriedWorldUniverse/casket-go v0.1.1-0.20260612051152-0558c0b699d3
-	github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260610200006-8b32e4554f43
+	github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260614031710-db1dfd1f85a9
 	github.com/CarriedWorldUniverse/cwb-proto v0.0.0-20260611230350-bdfe3afce2e3
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/crypto v0.48.0
 	golang.org/x/term v0.43.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -24,7 +25,6 @@ require (
 	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
