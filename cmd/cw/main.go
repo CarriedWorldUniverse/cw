@@ -18,6 +18,7 @@ import (
 	pr "github.com/CarriedWorldUniverse/cw/internal/cli/pr"
 	repo "github.com/CarriedWorldUniverse/cw/internal/cli/repo"
 	setupgit "github.com/CarriedWorldUniverse/cw/internal/cli/setupgit"
+	tenant "github.com/CarriedWorldUniverse/cw/internal/cli/tenant"
 	"github.com/spf13/cobra"
 )
 
@@ -54,6 +55,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(issue.NewCmd(flags))
 	root.AddCommand(kb.NewCmd(flags))
 	root.AddCommand(org.NewCmd(flags))
+	root.AddCommand(tenant.NewCmd(flags))
 	root.AddCommand(human.NewCmd(flags))
 	root.AddCommand(agent.NewCmd(flags))
 	root.AddCommand(cred.NewCmd(flags))
