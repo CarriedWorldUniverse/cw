@@ -1,27 +1,17 @@
 package agent
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 
 	casket "github.com/CarriedWorldUniverse/casket-go"
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
+	"github.com/CarriedWorldUniverse/cw/internal/keyfile"
 	"github.com/CarriedWorldUniverse/cwb-client/herald"
 	"github.com/CarriedWorldUniverse/cwb-client/identity"
 	"github.com/spf13/cobra"
 )
-
-// bootstrapKeyfile is the herald-rooted bootstrap keyfile the aspect runtime
-// reads (nexus runtime/heraldkeyfile.Keyfile). Tags MUST match that struct.
-type bootstrapKeyfile struct {
-	Key         string `json:"key"`         // base64 ed25519 private key (64-byte Go form)
-	KeyID       string `json:"key_id"`      // herald agent UUID
-	URL         string `json:"url"`         // nexus relay the aspect connects/discovers through
-	Slug        string `json:"slug"`        // agent name
-	Fingerprint string `json:"fingerprint"` // base64url sha256(pub)[:16]
-}
 
 func newEnrollCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	var slug, relayURL, out string
@@ -51,13 +41,7 @@ func newEnrollCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 				return fmt.Errorf("no agent for slug %q (fingerprint %s) at the edge — provision it first (or check the slug for a typo): %w", slug, fp, err)
 			}
 
-			kf := bootstrapKeyfile{
-				Key:         base64.StdEncoding.EncodeToString(priv),
-				KeyID:       a.ID,
-				URL:         relayURL,
-				Slug:        slug,
-				Fingerprint: fp,
-			}
+			kf := keyfile.Build(priv, a.ID, relayURL, slug, fp)
 			data, err := json.MarshalIndent(kf, "", "  ")
 			if err != nil {
 				return err
