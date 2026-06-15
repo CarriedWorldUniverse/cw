@@ -47,7 +47,13 @@ type onboardResult struct {
 	ConsoleURL       string `json:"console_url"`
 	CLIDownloadURL   string `json:"cli_download_url"`
 	ProductsEnabled  string `json:"products_enabled"`
+	CroftAgent       string `json:"croft_agent,omitempty"`
+	CroftProvisioned bool   `json:"croft_provisioned"`
 }
+
+// croftSecretWriter is the seam provisionCroft writes through; overridable in
+// tests. Live, it applies secrets via kubectl.
+var croftSecretWriter SecretWriter = kubectlSecretWriter{}
 
 // findOrgByName returns the existing org with this name. ok is false when none
 // exists; an error means more than one matches (ambiguous — onboard fails closed
@@ -74,6 +80,8 @@ func newOnboardCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	var products []string
 	var passwordStdin bool
 	var consoleURL, cliDownloadURL string
+	var provisionCroftFlag bool
+	var brokerSeam, croftNamespace string
 	cmd := &cobra.Command{
 		Use:   "onboard <org-name> --owner <email>",
 		Short: "Create an isolated customer org with an org-owner (one step)",
@@ -170,6 +178,14 @@ func newOnboardCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 				CLIDownloadURL:  download,
 				ProductsEnabled: productsEnabled,
 			}
+			if provisionCroftFlag {
+				cr, err := provisionCroft(ctx, c, croftSecretWriter, org.ID, human.ID, brokerSeam, croftNamespace)
+				if err != nil {
+					return fmt.Errorf("provision croft (org %s + owner already created): %w", org.ID, err)
+				}
+				res.CroftAgent = cr.AgentID
+				res.CroftProvisioned = true
+			}
 			return printResult(cmd.OutOrStdout(), gf.JSON, res)
 		},
 	}
@@ -179,6 +195,11 @@ func newOnboardCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	f.BoolVar(&passwordStdin, "owner-password-stdin", false, "read the owner's initial password from stdin")
 	f.StringVar(&consoleURL, "console-url", "", "console base URL to print (default: the session edge)")
 	f.StringVar(&cliDownloadURL, "cli-download-url", "", "CLI download URL to print (default: <console>/downloads)")
+	// Croft provisioning is opt-in until the croft pod lands (M2 Phase 3); it
+	// registers the org's managing-AI identity + writes its secrets via kubectl.
+	f.BoolVar(&provisionCroftFlag, "provision-croft", false, "also provision the org's managing-AI croft identity (needs kubectl/cluster access)")
+	f.StringVar(&brokerSeam, "broker-seam", defaultBrokerSeam, "nexus broker/agora seam the croft connects through")
+	f.StringVar(&croftNamespace, "croft-namespace", "nexus", "k8s namespace for the croft's secrets")
 	return cmd
 }
 
@@ -251,6 +272,9 @@ func printResult(w io.Writer, asJSON bool, res onboardResult) error {
 		fmt.Fprintf(w, "  password: not set — run `cw human set-password %s`\n", res.Owner)
 	}
 	fmt.Fprintf(w, "  products: %s\n", res.ProductsEnabled)
+	if res.CroftProvisioned {
+		fmt.Fprintf(w, "  croft:    %s (managing AI, local model)\n", res.CroftAgent)
+	}
 	fmt.Fprintf(w, "  console:  %s\n", res.ConsoleURL)
 	fmt.Fprintf(w, "  cw CLI:   %s\n", res.CLIDownloadURL)
 	return nil
