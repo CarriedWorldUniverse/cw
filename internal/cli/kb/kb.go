@@ -1,7 +1,17 @@
-// Package kb implements `cw kb`: store, search, list (commonplace knowledge).
+// Package kb implements `cw kb`: store, search, list, update, delete over
+// commonplace knowledge.
+//
+// Transport: the in-mesh mTLS gRPC path (CW_APP_TLS_CERT/_KEY/_CA, a cwb-ca
+// client cert) straight to commonplace's KnowledgeService — the same sovereign
+// transport `cw config` uses for almanac. Org/subject come from --org (or
+// CW_APP_ORG) and CW_APP_SUBJECT. This works without a live herald/edge session,
+// which is the point: knowledge is operable from croft with just the mesh cert.
 package kb
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,13 +19,80 @@ import (
 	"strings"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
-	"github.com/CarriedWorldUniverse/cwb-client/commonplace"
+	cwbv1 "github.com/CarriedWorldUniverse/cwb-proto/gen/go/cwb/v1"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 )
 
+func envOr(k, d string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return d
+}
+
+// dialCommonplace builds the in-mesh mTLS connection to commonplace's
+// KnowledgeService, mirroring cw config's dialAlmanac.
+func dialCommonplace() (*grpc.ClientConn, error) {
+	certPath := os.Getenv("CW_APP_TLS_CERT")
+	keyPath := os.Getenv("CW_APP_TLS_KEY")
+	caPath := os.Getenv("CW_APP_TLS_CA")
+	if certPath == "" || keyPath == "" || caPath == "" {
+		return nil, fmt.Errorf("cw kb needs the in-mesh mTLS transport: set CW_APP_TLS_CERT/_KEY/_CA (a cwb-ca client cert)")
+	}
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("CW_APP_TLS_CERT/_KEY: %w", err)
+	}
+	caPEM, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("CW_APP_TLS_CA: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("CW_APP_TLS_CA: no certs parsed")
+	}
+	addr := envOr("CW_APP_COMMONPLACE_ADDR", "commonplace.cwb.svc.cluster.local:8101")
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(
+		credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: pool, MinVersion: tls.VersionTLS13})))
+}
+
+func mdCtx(ctx context.Context, org, scopes string) context.Context {
+	return metadata.AppendToOutgoingContext(ctx,
+		"cwb-subject", envOr("CW_APP_SUBJECT", "croft"),
+		"cwb-org", org,
+		"cwb-scopes", scopes)
+}
+
+// client dials commonplace and returns the KnowledgeService client plus a
+// cleanup func; callers defer the cleanup.
+func knowledgeClient() (cwbv1.KnowledgeServiceClient, func(), error) {
+	conn, err := dialCommonplace()
+	if err != nil {
+		return nil, nil, err
+	}
+	return cwbv1.NewKnowledgeServiceClient(conn), func() { _ = conn.Close() }, nil
+}
+
 func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
-	cmd := &cobra.Command{Use: "kb", Short: "Manage commonplace knowledge"}
-	cmd.AddCommand(newStoreCmd(gf), newSearchCmd(gf), newListCmd(gf), newUpdateCmd(gf), newDeleteCmd(gf))
+	var org string
+	cmd := &cobra.Command{
+		Use:   "kb",
+		Short: "Manage commonplace knowledge (in-mesh mTLS)",
+		Long: "Store/search/list/update/delete commonplace knowledge.\n" +
+			"Uses the in-mesh mTLS transport (CW_APP_TLS_CERT/_KEY/_CA). Org from --org or\n" +
+			"CW_APP_ORG; subject from CW_APP_SUBJECT (default croft).",
+	}
+	cmd.PersistentFlags().StringVar(&org, "org", envOr("CW_APP_ORG", "carriedworld"), "commonplace org")
+	cmd.AddCommand(
+		newStoreCmd(gf, &org),
+		newSearchCmd(gf, &org),
+		newListCmd(gf, &org),
+		newUpdateCmd(gf, &org),
+		newDeleteCmd(gf, &org),
+	)
 	return cmd
 }
 
@@ -42,7 +119,7 @@ func readContent(flagContent string, r io.Reader) (string, error) {
 	return s, nil
 }
 
-func newStoreCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+func newStoreCmd(gf *cmdutil.GlobalFlags, org *string) *cobra.Command {
 	var topic, content, visibility string
 	var tags []string
 	cmd := &cobra.Command{
@@ -56,18 +133,19 @@ func newStoreCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, _, _, err := cmdutil.Session(gf)
+			kc, done, err := knowledgeClient()
 			if err != nil {
 				return err
 			}
-			e, err := commonplace.Store(cmd.Context(), c, commonplace.StoreInput{
-				Topic: topic, Content: body, Visibility: visibility, Tags: tags,
-			})
+			defer done()
+			resp, err := kc.Store(mdCtx(cmd.Context(), *org, "knowledge:write"),
+				&cwbv1.StoreRequest{Topic: topic, Content: body, Visibility: visibility, Tags: tags})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "stored %s (topic %q, %s)\n", e.ID, e.Topic, e.Visibility)
-			fmt.Println(e.ID)
+			e := resp.GetEntry()
+			fmt.Fprintf(os.Stderr, "stored %s (topic %q, %s)\n", e.GetId(), e.GetTopic(), e.GetVisibility())
+			fmt.Println(e.GetId())
 			return nil
 		},
 	}
@@ -79,21 +157,24 @@ func newStoreCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-func newSearchCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+func newSearchCmd(gf *cmdutil.GlobalFlags, org *string) *cobra.Command {
 	var topK int
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Semantic search over knowledge",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, _, _, err := cmdutil.Session(gf)
+			kc, done, err := knowledgeClient()
 			if err != nil {
 				return err
 			}
-			hits, err := commonplace.Search(cmd.Context(), c, args[0], topK)
+			defer done()
+			resp, err := kc.Search(mdCtx(cmd.Context(), *org, "knowledge:read"),
+				&cwbv1.SearchRequest{Q: args[0], TopK: int32(topK)})
 			if err != nil {
 				return err
 			}
+			hits := resp.GetHits()
 			if gf.JSON {
 				return json.NewEncoder(os.Stdout).Encode(hits)
 			}
@@ -102,7 +183,7 @@ func newSearchCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 				return nil
 			}
 			for _, h := range hits {
-				fmt.Printf("%.3f  %-24s %s\n", h.Score, h.Entry.Topic, snippet(h.Entry.Content))
+				fmt.Printf("%.3f  %-24s %s\n", h.GetScore(), h.GetEntry().GetTopic(), snippet(h.GetEntry().GetContent()))
 			}
 			return nil
 		},
@@ -111,24 +192,26 @@ func newSearchCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-func newListCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+func newListCmd(gf *cmdutil.GlobalFlags, org *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List knowledge entries",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, _, _, err := cmdutil.Session(gf)
+			kc, done, err := knowledgeClient()
 			if err != nil {
 				return err
 			}
-			entries, err := commonplace.List(cmd.Context(), c)
+			defer done()
+			resp, err := kc.List(mdCtx(cmd.Context(), *org, "knowledge:read"), &cwbv1.ListRequest{})
 			if err != nil {
 				return err
 			}
+			entries := resp.GetEntries()
 			if gf.JSON {
 				return json.NewEncoder(os.Stdout).Encode(entries)
 			}
 			for _, e := range entries {
-				fmt.Printf("%-22s %-8s %s\n", e.ID, e.Visibility, e.Topic)
+				fmt.Printf("%-22s %-8s %s\n", e.GetId(), e.GetVisibility(), e.GetTopic())
 			}
 			return nil
 		},
@@ -136,7 +219,7 @@ func newListCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-func newUpdateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+func newUpdateCmd(gf *cmdutil.GlobalFlags, org *string) *cobra.Command {
 	var topic, content, visibility string
 	var tags []string
 	cmd := &cobra.Command{
@@ -145,34 +228,41 @@ func newUpdateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f := cmd.Flags()
-			var in commonplace.UpdateInput
+			req := &cwbv1.UpdateRequest{Id: args[0]}
+			any := false
 			if f.Changed("topic") {
-				in.Topic = &topic
+				req.Topic = topic
+				any = true
 			}
 			if f.Changed("content") {
-				in.Content = &content
+				req.Content = content
+				any = true
 			}
 			if f.Changed("visibility") {
-				in.Visibility = &visibility
+				req.Visibility = visibility
+				any = true
 			}
 			if f.Changed("tag") {
-				in.Tags = &tags
+				req.Tags = tags
+				any = true
 			}
-			if in.Topic == nil && in.Content == nil && in.Visibility == nil && in.Tags == nil {
+			if !any {
 				return fmt.Errorf("nothing to update — set --topic/--content/--visibility/--tag")
 			}
-			c, _, _, err := cmdutil.Session(gf)
+			kc, done, err := knowledgeClient()
 			if err != nil {
 				return err
 			}
-			e, err := commonplace.Update(cmd.Context(), c, args[0], in)
+			defer done()
+			resp, err := kc.Update(mdCtx(cmd.Context(), *org, "knowledge:write"), req)
 			if err != nil {
 				return err
 			}
+			e := resp.GetEntry()
 			if gf.JSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(e)
 			}
-			fmt.Fprintf(os.Stderr, "updated %s (topic %q, %s)\n", e.ID, e.Topic, e.Visibility)
+			fmt.Fprintf(os.Stderr, "updated %s (topic %q, %s)\n", e.GetId(), e.GetTopic(), e.GetVisibility())
 			return nil
 		},
 	}
@@ -184,7 +274,7 @@ func newUpdateCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	return cmd
 }
 
-func newDeleteCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
+func newDeleteCmd(gf *cmdutil.GlobalFlags, org *string) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "delete <id> --yes",
@@ -194,11 +284,12 @@ func newDeleteCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			if !yes {
 				return fmt.Errorf("pass --yes to confirm deletion (irreversible)")
 			}
-			c, _, _, err := cmdutil.Session(gf)
+			kc, done, err := knowledgeClient()
 			if err != nil {
 				return err
 			}
-			if err := commonplace.Delete(cmd.Context(), c, args[0]); err != nil {
+			defer done()
+			if _, err := kc.Delete(mdCtx(cmd.Context(), *org, "knowledge:write"), &cwbv1.DeleteRequest{Id: args[0]}); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "deleted %s\n", args[0])

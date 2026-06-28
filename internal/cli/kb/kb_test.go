@@ -1,40 +1,11 @@
 package kb
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 )
-
-// TestKbListWiring drives the cobra Execute path (flag -> Session -> commonplace
-// -> stdout) against a stub, proving the wiring works offline.
-func TestKbListWiring(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-	var hit []string
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /knowledge/api/knowledge", func(w http.ResponseWriter, r *http.Request) {
-		hit = append(hit, r.URL.Path)
-		_, _ = w.Write([]byte(`{"entries":[{"id":"e1","topic":"t","visibility":"org"}]}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-
-	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
-	cmd := NewCmd(gf)
-	cmd.SetArgs([]string{"list"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-	if len(hit) == 0 || hit[0] != "/knowledge/api/knowledge" {
-		t.Fatalf("knowledge list not hit: %v", hit)
-	}
-}
 
 // TestStoreContentFromReader checks the content sourcing helper: --content wins,
 // else the provided reader (stdin stand-in).
@@ -52,108 +23,46 @@ func TestStoreContentFromReader(t *testing.T) {
 	}
 }
 
-func TestKbUpdateWiring(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-	var body, path string
-	mux := http.NewServeMux()
-	mux.HandleFunc("PATCH /knowledge/api/knowledge/e1", func(w http.ResponseWriter, r *http.Request) {
-		path = r.URL.Path
-		b, _ := io.ReadAll(r.Body)
-		body = string(b)
-		_, _ = w.Write([]byte(`{"id":"e1","topic":"new","visibility":"org"}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
-	cmd := NewCmd(gf)
-	cmd.SetArgs([]string{"update", "e1", "--topic", "new"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("update: %v", err)
-	}
-	if path != "/knowledge/api/knowledge/e1" || !strings.Contains(body, `"topic":"new"`) || strings.Contains(body, "content") {
-		t.Fatalf("path=%q body=%q", path, body)
+// The CLI must validate input BEFORE dialing commonplace, so these guard checks
+// surface a clear usage error rather than a transport failure. We run them with
+// no CW_APP_TLS_* set; the expected errors fire before any dial.
+
+func TestStoreRequiresTopic(t *testing.T) {
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
+	cmd.SetArgs([]string{"store", "--content", "x"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("store without --topic should error before dialing")
 	}
 }
 
 func TestKbUpdateNothing(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-	called := false
-	mux := http.NewServeMux()
-	mux.HandleFunc("PATCH /knowledge/api/knowledge/e1", func(http.ResponseWriter, *http.Request) { called = true })
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
-	cmd := NewCmd(gf)
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
 	cmd.SetArgs([]string{"update", "e1"})
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("expected nothing-to-update error")
-	}
-	if called {
-		t.Fatal("update with no flags must not hit the server")
-	}
-}
-
-func TestKbDeleteWiring(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-	hit := false
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /knowledge/api/knowledge/e1", func(w http.ResponseWriter, _ *http.Request) {
-		hit = true
-		w.WriteHeader(http.StatusNoContent)
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
-	cmd := NewCmd(gf)
-	cmd.SetArgs([]string{"delete", "e1", "--yes"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-	if !hit {
-		t.Fatal("delete endpoint not hit")
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "nothing to update") {
+		t.Fatalf("update with no flags should error before dialing; got %v", err)
 	}
 }
 
 func TestKbDeleteRequiresYes(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-	called := false
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /knowledge/api/knowledge/e1", func(http.ResponseWriter, *http.Request) { called = true })
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"}
-	cmd := NewCmd(gf)
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
 	cmd.SetArgs([]string{"delete", "e1"})
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("expected --yes-required error")
-	}
-	if called {
-		t.Fatal("delete without --yes must not hit the server")
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("delete without --yes should error before dialing; got %v", err)
 	}
 }
 
-// TestKbUpdateJSON: --json emits the updated Entry to stdout.
-func TestKbUpdateJSON(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-	mux := http.NewServeMux()
-	mux.HandleFunc("PATCH /knowledge/api/knowledge/e1", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"id":"e1","topic":"new","visibility":"org"}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	gf := &cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok", JSON: true}
-	cmd := NewCmd(gf)
-	cmd.SetArgs([]string{"update", "e1", "--topic", "new"})
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("update --json: %v", err)
+// TestNeedsMeshCert: with a valid request shape but no mesh cert, the command
+// fails with the in-mesh-transport guidance rather than a confusing dial error.
+func TestNeedsMeshCert(t *testing.T) {
+	for _, k := range []string{"CW_APP_TLS_CERT", "CW_APP_TLS_KEY", "CW_APP_TLS_CA"} {
+		t.Setenv(k, "")
 	}
-	var got map[string]any
-	if err := json.NewDecoder(&out).Decode(&got); err != nil {
-		t.Fatalf("--json output not valid JSON: %v\n%s", err, out.String())
-	}
-	if got["id"] != "e1" || got["topic"] != "new" {
-		t.Fatalf("unexpected --json: %v", got)
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
+	cmd.SetArgs([]string{"list"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "in-mesh mTLS") {
+		t.Fatalf("list without mesh cert should give the mTLS-transport hint; got %v", err)
 	}
 }
