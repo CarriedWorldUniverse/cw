@@ -97,6 +97,17 @@ func (s *FileStore) Get(name string, passphrase string) ([]byte, error) {
 	return plaintext, nil
 }
 
+func (s *FileStore) Delete(name string) error {
+	if err := validateSecretName(name); err != nil {
+		return err
+	}
+	err := os.Remove(s.path(name))
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrNotFound
+	}
+	return err
+}
+
 func (s *FileStore) List() ([]string, error) {
 	entries, err := os.ReadDir(s.dir)
 	if errors.Is(err, os.ErrNotExist) {

@@ -2,6 +2,8 @@ module github.com/CarriedWorldUniverse/cw
 
 go 1.26.3
 
+replace github.com/CarriedWorldUniverse/cwb-proto => /home/operator/src/cwb-proto
+
 require (
 	github.com/CarriedWorldUniverse/casket-go v0.1.1-0.20260612051152-0558c0b699d3
 	github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260614031710-db1dfd1f85a9

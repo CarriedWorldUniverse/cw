@@ -1,20 +1,19 @@
 // Package cred implements `cw cred`: explicit namespace credential lookup.
+//
+// Local tier (personal/<name>) is a passphrase-encrypted satchel on disk.
+// Remote tier (<org>/<name>) talks to custodian's CredentialService over the
+// in-mesh mTLS transport (see remote.go) — the same sovereign transport
+// `cw kb`/`cw config` use.
 package cred
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/CarriedWorldUniverse/cwb-client/client"
 
 	"github.com/CarriedWorldUniverse/cw/internal/cmdutil"
 	"github.com/CarriedWorldUniverse/cw/internal/config"
@@ -24,46 +23,55 @@ import (
 
 const personalNamespace = "personal"
 
+var validKinds = map[string]bool{"git": true, "oauth": true, "secret": true}
+
 var promptPassphrase = promptPassphraseTTY
 
-// Store is the local-tier seam. A remote custodian implementation can satisfy
-// the same command-level operations once NEX-650 lands.
+// Store is the local-tier seam.
 type Store interface {
 	Put(name string, plaintext []byte, passphrase string) error
 	Get(name string, passphrase string) ([]byte, error)
 	List() ([]string, error)
+	Delete(name string) error
 }
 
 func NewCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cred",
-		Short: "Get, put, and list explicitly namespaced credentials",
+		Short: "Get, put, list, and remove explicitly namespaced credentials",
 	}
-	cmd.AddCommand(newGetCmd(gf), newPutCmd(), newListCmd())
+	cmd.AddCommand(newGetCmd(), newPutCmd(), newListCmd(), newRmCmd())
 	return cmd
 }
 
-func newGetCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
-	return &cobra.Command{
+func validateKind(kind string) error {
+	if !validKinds[kind] {
+		return fmt.Errorf("cred: --kind must be one of git, oauth, secret (got %q)", kind)
+	}
+	return nil
+}
+
+func newGetCmd() *cobra.Command {
+	var kind string
+	cmd := &cobra.Command{
 		Use:   "get <namespace>/<name>",
 		Short: "Print a credential secret to stdout",
-		Args:  cobra.ExactArgs(1),
+		Long: "Print a credential to stdout.\n" +
+			"Local (personal/<name>): always the decrypted secret bytes, no decoration.\n" +
+			"Remote (<org>/<name>): --kind secret (default) prints the raw secret value;\n" +
+			"--kind git|oauth prints the (non-secret) bundle fields as JSON, since those\n" +
+			"kinds are structured rather than a single opaque value.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := routeName(args[0])
 			if err != nil {
 				return err
 			}
 			if route.remote {
-				c, _, _, err := cmdutil.Session(gf)
-				if err != nil {
+				if err := validateKind(kind); err != nil {
 					return err
 				}
-				secret, err := getRemoteSecret(cmd.Context(), c, route.namespace, route.name)
-				if err != nil {
-					return err
-				}
-				_, err = cmd.OutOrStdout().Write([]byte(secret))
-				return err
+				return remoteGet(cmd.Context(), cmd.OutOrStdout(), route.namespace, route.name, kind)
 			}
 			passphrase, err := promptPassphrase("Satchel passphrase")
 			if err != nil {
@@ -77,24 +85,34 @@ func newGetCmd(gf *cmdutil.GlobalFlags) *cobra.Command {
 			return err
 		},
 	}
+	cmd.Flags().StringVar(&kind, "kind", "secret", "remote tier only: git | oauth | secret")
+	return cmd
 }
 
 func newPutCmd() *cobra.Command {
-	return &cobra.Command{
+	var kind, host, username string
+	cmd := &cobra.Command{
 		Use:   "put <namespace>/<name>",
 		Short: "Store a credential secret from stdin",
-		Args:  cobra.ExactArgs(1),
+		Long: "Store a credential secret read from stdin.\n" +
+			"Remote (<org>/<name>) only supports --kind secret in this release — --host\n" +
+			"and --username are stored as optional (non-secret) hints alongside the value.\n" +
+			"git/oauth remote writes are out of scope here.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := routeName(args[0])
 			if err != nil {
 				return err
 			}
-			if route.remote {
-				return remoteNotImplemented(route.namespace)
-			}
 			secret, err := io.ReadAll(cmd.InOrStdin())
 			if err != nil {
 				return fmt.Errorf("cred: read secret from stdin: %w", err)
+			}
+			if route.remote {
+				if err := validateKind(kind); err != nil {
+					return err
+				}
+				return remotePut(cmd.Context(), route.namespace, route.name, kind, secret, host, username)
 			}
 			passphrase, err := promptPassphrase("Satchel passphrase")
 			if err != nil {
@@ -106,20 +124,27 @@ func newPutCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&kind, "kind", "secret", "remote tier only: secret (git/oauth writes are out of scope)")
+	cmd.Flags().StringVar(&host, "host", "", "remote tier only: optional hint — the service/API host this secret belongs to")
+	cmd.Flags().StringVar(&username, "username", "", "remote tier only: optional hint — header/account/usage (e.g. x-api-key, bearer)")
+	return cmd
 }
 
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls <namespace>",
 		Short: "List credential names in a namespace",
-		Args:  cobra.ExactArgs(1),
+		Long: "List credentials in a namespace.\n" +
+			"Local (personal): bare names, one per line.\n" +
+			"Remote (<org>): kind/name, one per line — kinds share the namespace remotely.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := routeList(args[0])
 			if err != nil {
 				return err
 			}
 			if route.remote {
-				return remoteNotImplemented(route.namespace)
+				return remoteList(cmd.Context(), cmd.OutOrStdout(), route.namespace)
 			}
 			names, err := defaultStore().List()
 			if err != nil {
@@ -133,6 +158,33 @@ func newListCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newRmCmd() *cobra.Command {
+	var kind string
+	cmd := &cobra.Command{
+		Use:   "rm <namespace>/<name>",
+		Short: "Remove a credential",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			route, err := routeName(args[0])
+			if err != nil {
+				return err
+			}
+			if route.remote {
+				if err := validateKind(kind); err != nil {
+					return err
+				}
+				return remoteDelete(cmd.Context(), route.namespace, route.name, kind)
+			}
+			if err := defaultStore().Delete(route.name); err != nil {
+				return formatStoreError("rm", route.ref(), err)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "secret", "remote tier only: git | oauth | secret")
+	return cmd
 }
 
 type routedName struct {
@@ -185,61 +237,6 @@ func validateSecretName(name string) error {
 		return fmt.Errorf("cred: invalid secret name %q", name)
 	}
 	return nil
-}
-
-func remoteNotImplemented(namespace string) error {
-	return fmt.Errorf("cred: namespace %q is the remote custodian tier; remote tier not implemented yet (NEX-650)", namespace)
-}
-
-func getRemoteSecret(ctx context.Context, c client.Doer, org, name string) (string, error) {
-	ref := org + "/" + name
-	path := "/api/secret/" + url.PathEscape(org) + "/" + url.PathEscape(name)
-	resp, body, err := c.Do(ctx, http.MethodGet, "custodian", path, nil)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode/100 != 2 {
-		msg := responseError(body)
-		switch resp.StatusCode {
-		case http.StatusForbidden:
-			return "", fmt.Errorf("cred: forbidden %s: caller lacks custodian:read for that org's secret: %s", ref, msg)
-		case http.StatusNotFound:
-			return "", fmt.Errorf("cred: no such secret %s", ref)
-		default:
-			return "", fmt.Errorf("cred: get %s: status %d: %s", ref, resp.StatusCode, msg)
-		}
-	}
-	var item struct {
-		Value string `json:"value"`
-		Item  struct {
-			Value string `json:"value"`
-		} `json:"item"`
-	}
-	if err := json.Unmarshal(body, &item); err != nil {
-		return "", fmt.Errorf("cred: get %s: decode response: %w", ref, err)
-	}
-	if item.Value != "" {
-		return item.Value, nil
-	}
-	return item.Item.Value, nil
-}
-
-func responseError(body []byte) string {
-	var e struct {
-		Error   string `json:"error"`
-		Message string `json:"message"`
-	}
-	_ = json.Unmarshal(body, &e)
-	switch {
-	case e.Error != "":
-		return e.Error
-	case e.Message != "":
-		return e.Message
-	case strings.TrimSpace(string(body)) != "":
-		return strings.TrimSpace(string(body))
-	default:
-		return "no response body"
-	}
 }
 
 func formatStoreError(op, ref string, err error) error {
