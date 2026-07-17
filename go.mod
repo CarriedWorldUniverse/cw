@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/CarriedWorldUniverse/casket-go v0.1.1-0.20260612051152-0558c0b699d3
 	github.com/CarriedWorldUniverse/cwb-client v0.0.0-20260614031710-db1dfd1f85a9
-	github.com/CarriedWorldUniverse/cwb-proto v0.0.0-20260717042803-3825dc79a1a7
+	github.com/CarriedWorldUniverse/cwb-proto v0.0.0-20260717163616-9ff43d0ba07a
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.48.0
