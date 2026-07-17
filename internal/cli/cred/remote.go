@@ -111,7 +111,13 @@ func remoteGet(ctx context.Context, w io.Writer, org, name, kind string) error {
 	}
 	switch kind {
 	case "secret":
-		_, err := io.WriteString(w, resp.GetSecretBundle().GetValue())
+		// Generated getters are nil-safe, so a missing/mismatched bundle arm
+		// would otherwise print an empty secret silently — fail loudly instead.
+		sb := resp.GetSecretBundle()
+		if sb == nil {
+			return fmt.Errorf("cred: get %s: server returned no secret bundle", ref)
+		}
+		_, err := io.WriteString(w, sb.GetValue())
 		return err
 	case "git":
 		return json.NewEncoder(w).Encode(resp.GetGitBundle())

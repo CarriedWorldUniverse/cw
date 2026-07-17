@@ -112,6 +112,30 @@ func TestRemoteGetSecretPrintsValueOnly(t *testing.T) {
 	}
 }
 
+func TestRemoteGetMissingBundleArmFailsLoudly(t *testing.T) {
+	startFakeCustodian(t, &fakeCredentialService{
+		fetch: func(ctx context.Context, r *cwbv1.FetchRequest) (*cwbv1.FetchResponse, error) {
+			// Contract violation: kind=secret with no bundle arm. The nil-safe
+			// generated getters must not turn this into an empty secret.
+			return &cwbv1.FetchResponse{Kind: "secret", Name: r.GetName()}, nil
+		},
+	})
+
+	var out bytes.Buffer
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
+	cmd.SetArgs([]string{"get", "cwb/meshy-api-key"})
+	cmd.SetOut(&out)
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "server returned no secret bundle") {
+		t.Fatalf("err = %v, want loud no-secret-bundle failure", err)
+	}
+	// cobra prints usage to out on error; the point is no secret-shaped
+	// value was written before the guard fired.
+	if strings.Contains(out.String(), "shh") {
+		t.Fatalf("stdout = %q, leaked bundle content on failure", out.String())
+	}
+}
+
 func TestRemotePutSendsSecretBundleWithHints(t *testing.T) {
 	var got *cwbv1.SetCredentialRequest
 	startFakeCustodian(t, &fakeCredentialService{
