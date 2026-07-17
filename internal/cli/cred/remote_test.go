@@ -184,7 +184,7 @@ func TestRemoteRmDeletedTrueIsSilent(t *testing.T) {
 
 	var out bytes.Buffer
 	cmd := NewCmd(&cmdutil.GlobalFlags{})
-	cmd.SetArgs([]string{"rm", "cwb/meshy-api-key"})
+	cmd.SetArgs([]string{"rm", "cwb/meshy-api-key", "--yes"})
 	cmd.SetOut(&out)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("rm: %v", err)
@@ -202,10 +202,30 @@ func TestRemoteRmDeletedFalseIsNotFound(t *testing.T) {
 	})
 
 	cmd := NewCmd(&cmdutil.GlobalFlags{})
-	cmd.SetArgs([]string{"rm", "cwb/missing"})
+	cmd.SetArgs([]string{"rm", "cwb/missing", "--yes"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "cwb/missing: not found") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRemoteRmRequiresYes(t *testing.T) {
+	called := false
+	startFakeCustodian(t, &fakeCredentialService{
+		delete: func(ctx context.Context, r *cwbv1.DeleteCredentialRequest) (*cwbv1.DeleteCredentialResponse, error) {
+			called = true
+			return &cwbv1.DeleteCredentialResponse{Deleted: true}, nil
+		},
+	})
+
+	cmd := NewCmd(&cmdutil.GlobalFlags{})
+	cmd.SetArgs([]string{"rm", "cwb/meshy-api-key"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("rm without --yes err = %v, want the --yes confirmation error", err)
+	}
+	if called {
+		t.Fatal("DeleteCredential was called despite missing --yes")
 	}
 }
 

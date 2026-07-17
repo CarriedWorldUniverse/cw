@@ -80,12 +80,14 @@ var credentialClient = func() (cwbv1.CredentialServiceClient, func(), error) {
 }
 
 // remoteErr maps a gRPC error to cred's existing error wording, mirroring the
-// style the old edge-HTTP path used for 403s.
-func remoteErr(op, ref, scope string, err error) error {
+// style the old edge-HTTP path used for 403s. subject describes what ref
+// names for the forbidden message — "that org's secret" for a single
+// (kind, name) op, "that org's credentials" for a namespace-wide op like ls.
+func remoteErr(op, ref, scope, subject string, err error) error {
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.PermissionDenied:
-			return fmt.Errorf("cred: forbidden %s: caller lacks %s for that org's secret: %s", ref, scope, st.Message())
+			return fmt.Errorf("cred: forbidden %s: caller lacks %s for %s: %s", ref, scope, subject, st.Message())
 		case codes.NotFound:
 			return fmt.Errorf("cred: no such secret %s", ref)
 		}
@@ -105,7 +107,7 @@ func remoteGet(ctx context.Context, w io.Writer, org, name, kind string) error {
 	defer done()
 	resp, err := cc.Fetch(mdCtx(ctx, org, "cred:read"), &cwbv1.FetchRequest{Kind: kind, Name: name})
 	if err != nil {
-		return remoteErr("get", ref, "cred:read", err)
+		return remoteErr("get", ref, "cred:read", "that org's secret", err)
 	}
 	switch kind {
 	case "secret":
@@ -143,7 +145,7 @@ func remotePut(ctx context.Context, org, name, kind string, value []byte, host, 
 		}},
 	})
 	if err != nil {
-		return remoteErr("put", ref, "cred:write", err)
+		return remoteErr("put", ref, "cred:write", "that org's secret", err)
 	}
 	return nil
 }
@@ -159,7 +161,7 @@ func remoteList(ctx context.Context, w io.Writer, org string) error {
 	defer done()
 	resp, err := cc.ListCredentials(mdCtx(ctx, org, "cred:read"), &cwbv1.ListCredentialsRequest{})
 	if err != nil {
-		return remoteErr("ls", org, "cred:read", err)
+		return remoteErr("ls", org, "cred:read", "that org's credentials", err)
 	}
 	for _, it := range resp.GetItems() {
 		if _, err := fmt.Fprintf(w, "%s/%s\n", it.GetKind(), it.GetName()); err != nil {
@@ -182,7 +184,7 @@ func remoteDelete(ctx context.Context, org, name, kind string) error {
 	defer done()
 	resp, err := cc.DeleteCredential(mdCtx(ctx, org, "cred:write"), &cwbv1.DeleteCredentialRequest{Kind: kind, Name: name})
 	if err != nil {
-		return remoteErr("rm", ref, "cred:write", err)
+		return remoteErr("rm", ref, "cred:write", "that org's secret", err)
 	}
 	if !resp.GetDeleted() {
 		return fmt.Errorf("cred: %s: not found", ref)

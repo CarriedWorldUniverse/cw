@@ -72,8 +72,18 @@ func TestPersonalPutRmGetDistinguishesNotFound(t *testing.T) {
 		t.Fatalf("put: %v", err)
 	}
 
+	rmNoYes := NewCmd(&cmdutil.GlobalFlags{})
+	rmNoYes.SetArgs([]string{"rm", "personal/api-token"})
+	err := rmNoYes.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("rm without --yes err = %v, want the --yes confirmation error", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "api-token.casket.json")); err != nil {
+		t.Fatalf("envelope removed despite missing --yes: %v", err)
+	}
+
 	rm := NewCmd(&cmdutil.GlobalFlags{})
-	rm.SetArgs([]string{"rm", "personal/api-token"})
+	rm.SetArgs([]string{"rm", "personal/api-token", "--yes"})
 	if err := rm.Execute(); err != nil {
 		t.Fatalf("rm: %v", err)
 	}
@@ -83,13 +93,13 @@ func TestPersonalPutRmGetDistinguishesNotFound(t *testing.T) {
 
 	get := NewCmd(&cmdutil.GlobalFlags{})
 	get.SetArgs([]string{"get", "personal/api-token"})
-	err := get.Execute()
+	err = get.Execute()
 	if err == nil || !strings.Contains(err.Error(), "no such secret personal/api-token") {
 		t.Fatalf("get after rm err = %v, want not-found", err)
 	}
 
 	rmAgain := NewCmd(&cmdutil.GlobalFlags{})
-	rmAgain.SetArgs([]string{"rm", "personal/api-token"})
+	rmAgain.SetArgs([]string{"rm", "personal/api-token", "--yes"})
 	err = rmAgain.Execute()
 	if err == nil || !strings.Contains(err.Error(), "no such secret personal/api-token") {
 		t.Fatalf("rm of missing name err = %v, want not-found", err)

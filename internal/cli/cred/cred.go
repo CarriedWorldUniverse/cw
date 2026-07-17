@@ -104,14 +104,16 @@ func newPutCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if route.remote {
+				if err := validateKind(kind); err != nil {
+					return err
+				}
+			}
 			secret, err := io.ReadAll(cmd.InOrStdin())
 			if err != nil {
 				return fmt.Errorf("cred: read secret from stdin: %w", err)
 			}
 			if route.remote {
-				if err := validateKind(kind); err != nil {
-					return err
-				}
 				return remotePut(cmd.Context(), route.namespace, route.name, kind, secret, host, username)
 			}
 			passphrase, err := promptPassphrase("Satchel passphrase")
@@ -162,11 +164,15 @@ func newListCmd() *cobra.Command {
 
 func newRmCmd() *cobra.Command {
 	var kind string
+	var yes bool
 	cmd := &cobra.Command{
-		Use:   "rm <namespace>/<name>",
-		Short: "Remove a credential",
+		Use:   "rm <namespace>/<name> --yes",
+		Short: "Remove a credential (irreversible; requires --yes)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf("pass --yes to confirm deletion (irreversible)")
+			}
 			route, err := routeName(args[0])
 			if err != nil {
 				return err
@@ -184,6 +190,7 @@ func newRmCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&kind, "kind", "secret", "remote tier only: git | oauth | secret")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the irreversible delete")
 	return cmd
 }
 
