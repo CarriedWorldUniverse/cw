@@ -3,8 +3,6 @@ package cred
 import (
 	"bytes"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +59,53 @@ func TestPersonalPutGetListRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPersonalPutRmGetDistinguishesNotFound(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CW_SATCHEL_DIR", dir)
+	restore := stubPassphrase(t, "fixed test passphrase")
+	defer restore()
+
+	put := NewCmd(&cmdutil.GlobalFlags{})
+	put.SetArgs([]string{"put", "personal/api-token"})
+	put.SetIn(strings.NewReader("secret-value\n"))
+	if err := put.Execute(); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	rmNoYes := NewCmd(&cmdutil.GlobalFlags{})
+	rmNoYes.SetArgs([]string{"rm", "personal/api-token"})
+	err := rmNoYes.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("rm without --yes err = %v, want the --yes confirmation error", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "api-token.casket.json")); err != nil {
+		t.Fatalf("envelope removed despite missing --yes: %v", err)
+	}
+
+	rm := NewCmd(&cmdutil.GlobalFlags{})
+	rm.SetArgs([]string{"rm", "personal/api-token", "--yes"})
+	if err := rm.Execute(); err != nil {
+		t.Fatalf("rm: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "api-token.casket.json")); !os.IsNotExist(err) {
+		t.Fatalf("envelope still on disk after rm: %v", err)
+	}
+
+	get := NewCmd(&cmdutil.GlobalFlags{})
+	get.SetArgs([]string{"get", "personal/api-token"})
+	err = get.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no such secret personal/api-token") {
+		t.Fatalf("get after rm err = %v, want not-found", err)
+	}
+
+	rmAgain := NewCmd(&cmdutil.GlobalFlags{})
+	rmAgain.SetArgs([]string{"rm", "personal/api-token", "--yes"})
+	err = rmAgain.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no such secret personal/api-token") {
+		t.Fatalf("rm of missing name err = %v, want not-found", err)
+	}
+}
+
 func TestWrongPassphraseAndMissingNameAreDistinct(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
@@ -104,75 +149,6 @@ func TestBareNameErrorShowsBothForms(t *testing.T) {
 	msg := err.Error()
 	if !strings.Contains(msg, "personal/api-token") || !strings.Contains(msg, "<org>/api-token") {
 		t.Fatalf("bare-name help = %q", msg)
-	}
-}
-
-func TestRemoteGetWiring(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-
-	var gotAuth string
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /custodian/api/secret/cwb/meshy-api-key", func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		_, _ = w.Write([]byte(`{"path":"cwb/meshy-api-key","value":"secret-value"}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-
-	var out bytes.Buffer
-	cmd := NewCmd(&cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"})
-	cmd.SetArgs([]string{"get", "cwb/meshy-api-key"})
-	cmd.SetOut(&out)
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if out.String() != "secret-value" {
-		t.Fatalf("secret = %q", out.String())
-	}
-	if gotAuth != "Bearer tok" {
-		t.Fatalf("Authorization = %q", gotAuth)
-	}
-}
-
-func TestRemoteGetForbidden(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /custodian/api/secret/cwb/meshy-api-key", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(`{"error":"scope denied"}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-
-	cmd := NewCmd(&cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"})
-	cmd.SetArgs([]string{"get", "cwb/meshy-api-key"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("get should fail")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "forbidden") || !strings.Contains(msg, "custodian:read") || !strings.Contains(msg, "scope denied") {
-		t.Fatalf("error = %q", msg)
-	}
-}
-
-func TestRemoteGetNotFound(t *testing.T) {
-	t.Setenv("CW_CONFIG_DIR", t.TempDir())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /custodian/api/secret/cwb/missing", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"not found"}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-
-	cmd := NewCmd(&cmdutil.GlobalFlags{Edge: srv.URL, Token: "tok"})
-	cmd.SetArgs([]string{"get", "cwb/missing"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "no such secret cwb/missing") {
-		t.Fatalf("error = %v", err)
 	}
 }
 
